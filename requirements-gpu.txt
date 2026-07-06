@@ -1,0 +1,17 @@
+# =============================================================================
+# GPU install — DEVELOPMENT / TRAINING desktop (Ryzen 7 7700X, RTX 4070 12 GB).
+# Used for fine-tuning (bf16 mixed precision). CUDA 12.4 build of PyTorch.
+#
+#   python -m venv .venv
+#   .venv\Scripts\python -m pip install -U pip wheel
+#   .venv\Scripts\python -m pip install -r requirements-gpu.txt
+#   .venv\Scripts\python -m spacy download en_core_web_sm
+#
+# The primary index is the PyTorch CUDA (cu124) channel so `torch` resolves to
+# the +cu124 build; PyPI is the fallback for everything else.
+# =============================================================================
+--index-url https://download.pytorch.org/whl/cu124
+--extra-index-url https://pypi.org/simple
+
+torch==2.5.1
+-e .[gpu,serve,demo,dev]

@@ -1,0 +1,34 @@
+# Data configuration: sources, schema, splits.
+dataset:
+  name: semeval2014
+  domains: [restaurants, laptops]     # SemEval-2014 Task 4 subsets
+  # Hugging Face mirror(s) tried by scripts/prepare_data.py --download.
+  # Falls back to the committed sample set if unavailable.
+  hf_candidates:
+    - "jakartaresearch/semeval-absa"
+    - "alexcadillon/SemEval2014Task4"
+
+paths:
+  raw_dir: data/raw
+  processed_dir: data/processed
+  sample_dir: data/sample
+
+splits:
+  train: 0.8
+  val: 0.1
+  test: 0.1
+  stratify_by: polarity
+  # If official test split is available it is used verbatim; otherwise we
+  # derive splits from the training file with these ratios.
+
+schema:
+  text_field: text
+  aspects_field: aspects           # list of {term, category, polarity, span}
+  polarities: [positive, negative, neutral]   # 'conflict' -> dropped (configurable)
+  drop_conflict: true
+
+preprocessing:
+  lowercase: false                 # cased models (deberta/bert-cased) prefer raw case
+  strip_html: true
+  max_chars: 2000                  # guard against pathologically long inputs
+  min_chars: 1

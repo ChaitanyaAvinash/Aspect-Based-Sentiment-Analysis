@@ -1,0 +1,27 @@
+# Model configuration for both tracks.
+baseline:                          # Track A — classical, CPU, interpretable
+  ate:
+    method: crf                    # crf (sklearn-crfsuite) using spaCy features
+    spacy_model: en_core_web_sm
+  acd:
+    vectorizer: tfidf
+    classifier: logreg             # multi-label one-vs-rest
+    max_features: 20000
+    ngram_range: [1, 2]
+  asc:
+    vectorizer: tfidf
+    classifier: linearsvc          # linearsvc | logreg
+    max_features: 20000
+    ngram_range: [1, 2]
+
+transformer:                       # Track B — primary model
+  encoder: microsoft/deberta-v3-base
+  fallback_encoder: bert-base-uncased
+  max_length: 128
+  ate:
+    scheme: BIO                    # token classification
+  acd:
+    problem_type: multi_label_classification
+  asc:
+    # Aspect marked in the sequence with special tokens, then classified.
+    aspect_markers: ["[ASP]", "[/ASP]"]

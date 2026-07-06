@@ -1,0 +1,18 @@
+# =============================================================================
+# CPU-only install — PRESENTATION / DEMO laptop (Ryzen 5 7000U, no GPU, 16 GB).
+# Runs inference only: FastAPI service + Streamlit demo, fully offline after
+# this one-time install. No CUDA.
+#
+#   python -m venv .venv
+#   .venv\Scripts\python -m pip install -U pip wheel
+#   .venv\Scripts\python -m pip install -r requirements-cpu.txt
+#   .venv\Scripts\python -m spacy download en_core_web_sm
+#
+# Notes:
+#   * On Windows the default PyPI `torch` wheel is already the CPU build.
+#   * The --extra-index-url below makes the CPU wheel available on Linux/macOS
+#     too, so this file is portable to CI.
+# =============================================================================
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+-e .[cpu,serve,demo,dev]

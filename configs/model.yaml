@@ -10,7 +10,7 @@ baseline:                          # Track A — classical, CPU, interpretable
     ngram_range: [1, 2]
   asc:
     vectorizer: tfidf
-    classifier: linearsvc          # linearsvc | logreg
+    classifier: logreg             # logreg (calibrated proba) | linearsvc
     max_features: 20000
     ngram_range: [1, 2]
 

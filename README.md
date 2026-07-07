@@ -81,7 +81,8 @@ experiment config via YAML in `configs/`. Experiments tracked with MLflow.
 
 - [x] **P0** Scaffold — packaging, config, logging, tooling, CI, docs.
 - [x] **P1** Data — SemEval-2014 parser + fetch, splits, committed sample, dataset card.
-- [ ] **P2** Track A baseline — train + evaluate.
+- [x] **P2** Track A baseline — CRF (ATE) + TF-IDF/LogReg (ACD/ASC); trained + evaluated.
+      SemEval-2014 test: **ATE span-F1 0.73 · ACD micro-F1 0.80 · ASC macro-F1 0.60**.
 - [ ] **P3** Track B transformer — fine-tune, MLflow, checkpoints.
 - [ ] **P4** Evaluation — Track A vs B tables, confusion matrices, figures.
 - [ ] **P5** Serving — FastAPI `/predict` + `/health`, pydantic schemas.

@@ -25,24 +25,28 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Shared ML stack (no torch wheel index pinned here — see requirements-*.txt).
-ml = [
+# Track A — classical baseline (light; runs in CI). No torch.
+classical = [
+    "scikit-learn==1.5.2",
+    "sklearn-crfsuite==0.5.0",
+    "spacy==3.8.2",
+    "seqeval==1.2.2",
+]
+# Track B — deep-learning stack (heavy; torch wheel index comes from requirements-*.txt).
+dl = [
     "torch==2.5.1",
     "transformers==4.46.3",
     "datasets==3.1.0",
     "evaluate==0.4.3",
     "accelerate==1.1.1",
-    "scikit-learn==1.5.2",
-    "sklearn-crfsuite==0.5.0",
-    "spacy==3.8.2",
     "sentencepiece==0.2.0",
-    "seqeval==1.2.2",
-    "mlflow==2.18.0",
-    "matplotlib==3.9.2",
 ]
-# CPU deployment (demo laptop): ml stack + ONNX Runtime for the exported artifact.
+# Experiment tracking + figures (Phases 3–4).
+track = ["mlflow==2.18.0", "matplotlib==3.9.2"]
+ml = ["absa[classical,dl,track]"]
+# CPU deployment (demo laptop): full ml stack + ONNX Runtime for the exported artifact.
 cpu = ["absa[ml]", "onnx==1.17.0", "onnxruntime==1.20.1"]
-# GPU training (desktop): same ml stack, CUDA torch wheel comes from requirements-gpu.txt.
+# GPU training (desktop): full ml stack; CUDA torch wheel comes from requirements-gpu.txt.
 gpu = ["absa[ml]"]
 serve = ["fastapi==0.115.5", "uvicorn[standard]==0.32.1"]
 demo = ["streamlit==1.40.2"]
@@ -113,7 +117,13 @@ markers = [
 [tool.coverage.run]
 source = ["absa"]
 branch = true
-omit = ["*/__main__.py"]
+# Torch-dependent training/serving internals are exercised on the GPU/CPU
+# machines, not in the light CI run; keep them out of the coverage gate.
+omit = [
+    "*/__main__.py",
+    "*/models/transformer.py",
+    "*/training/hf_trainer.py",
+]
 
 [tool.coverage.report]
 show_missing = true

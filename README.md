@@ -80,7 +80,7 @@ experiment config via YAML in `configs/`. Experiments tracked with MLflow.
 ## Roadmap
 
 - [x] **P0** Scaffold — packaging, config, logging, tooling, CI, docs.
-- [ ] **P1** Data — SemEval parser, splits, committed sample, dataset card.
+- [x] **P1** Data — SemEval-2014 parser + fetch, splits, committed sample, dataset card.
 - [ ] **P2** Track A baseline — train + evaluate.
 - [ ] **P3** Track B transformer — fine-tune, MLflow, checkpoints.
 - [ ] **P4** Evaluation — Track A vs B tables, confusion matrices, figures.

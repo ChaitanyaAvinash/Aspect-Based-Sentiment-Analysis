@@ -40,6 +40,7 @@ dl = [
     "evaluate==0.4.3",
     "accelerate==1.1.1",
     "sentencepiece==0.2.0",
+    "protobuf==4.25.5",
 ]
 # Experiment tracking + figures (Phases 3–4).
 track = ["mlflow==2.18.0", "matplotlib==3.9.2"]

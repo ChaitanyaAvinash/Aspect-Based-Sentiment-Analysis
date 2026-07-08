@@ -1,0 +1,39 @@
+{
+  "track": "transformer",
+  "seed": 42,
+  "splits": {
+    "train": 5415,
+    "val": 677,
+    "test": 1600
+  },
+  "metrics": {
+    "encoder": "microsoft/deberta-v3-base",
+    "seed": 42,
+    "epochs": 3.0,
+    "ate": {
+      "loss": 0.06740175187587738,
+      "precision": 0.8679665738161559,
+      "recall": 0.8877492877492877,
+      "f1": 0.8777464788732393,
+      "runtime": 7.5254,
+      "samples_per_second": 212.614,
+      "steps_per_second": 6.644
+    },
+    "asc": {
+      "loss": 0.4580443501472473,
+      "accuracy": 0.8600682593856656,
+      "macro_f1": 0.8039404303192387,
+      "runtime": 7.2259,
+      "samples_per_second": 243.291,
+      "steps_per_second": 7.611
+    },
+    "acd": {
+      "loss": 0.15317581593990326,
+      "micro_f1": 0.9061007957559681,
+      "macro_f1": 0.8817683925164623,
+      "runtime": 6.8838,
+      "samples_per_second": 111.421,
+      "steps_per_second": 3.486
+    }
+  }
+}

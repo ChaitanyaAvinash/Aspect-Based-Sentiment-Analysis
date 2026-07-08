@@ -66,6 +66,87 @@ def _train_baseline(
     return model, metrics
 
 
+def _write_metrics(path: Path, payload: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _run_baseline(
+    args: argparse.Namespace, splits: dict[str, list[ABSAExample]], seed: int
+) -> None:
+    out_dir = Path(args.output_dir) if args.output_dir else PROJECT_ROOT / "artifacts" / "baseline"
+    metrics_out = (
+        Path(args.metrics_out)
+        if args.metrics_out
+        else PROJECT_ROOT / "reports" / "baseline_metrics.json"
+    )
+    model, metrics = _train_baseline(splits, seed)
+    saved = model.save(out_dir)  # type: ignore[attr-defined]
+    _write_metrics(
+        metrics_out,
+        {
+            "track": "baseline",
+            "seed": seed,
+            "splits": {k: len(v) for k, v in splits.items()},
+            "metrics": metrics,
+        },
+    )
+    ate_f1 = metrics["ate"]["f1"]  # type: ignore[index]
+    asc_f1 = metrics["asc"]["macro_f1"]  # type: ignore[index]
+    acd_f1 = metrics["acd"].get("micro_f1", "n/a")  # type: ignore[union-attr]
+    log.info("done", model=str(saved), ate_f1=ate_f1, asc_macro_f1=asc_f1, acd_micro_f1=acd_f1)
+    print(
+        f"[train] baseline saved -> {saved}\n"
+        f"        ATE span-F1={ate_f1:.3f}  ASC macro-F1={asc_f1:.3f}  ACD micro-F1={acd_f1}\n"
+        f"        metrics -> {metrics_out}"
+    )
+
+
+def _run_transformer(
+    args: argparse.Namespace, splits: dict[str, list[ABSAExample]], seed: int
+) -> None:
+    from absa.training.hf_trainer import train_transformer
+
+    model_cfg = load_yaml_config("configs/model.yaml")
+    train_cfg = load_yaml_config("configs/training.yaml")["transformer"]
+    train_cfg["seed"] = seed
+    out_dir = (
+        Path(args.output_dir) if args.output_dir else PROJECT_ROOT / "artifacts" / "transformer"
+    )
+    metrics_out = (
+        Path(args.metrics_out)
+        if args.metrics_out
+        else PROJECT_ROOT / "reports" / "transformer_metrics.json"
+    )
+    results = train_transformer(
+        splits,
+        model_cfg,
+        train_cfg,
+        out_dir,
+        encoder_override=args.encoder,
+        max_train=args.max_train,
+        epochs=args.epochs,
+        mlflow_enabled=not args.no_mlflow,
+    )
+    _write_metrics(
+        metrics_out,
+        {
+            "track": "transformer",
+            "seed": seed,
+            "splits": {k: len(v) for k, v in splits.items()},
+            "metrics": results,
+        },
+    )
+    ate = results.get("ate", {}).get("f1", "n/a")
+    asc = results.get("asc", {}).get("macro_f1", "n/a")
+    acd = results.get("acd", {}).get("micro_f1", "n/a")
+    print(
+        f"[train] transformer ({results.get('encoder')}) saved -> {out_dir}\n"
+        f"        ATE span-F1={ate}  ASC macro-F1={asc}  ACD micro-F1={acd}\n"
+        f"        metrics -> {metrics_out}"
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train an ABSA track.")
     parser.add_argument("--track", choices=["baseline", "transformer"], default="baseline")
@@ -74,6 +155,11 @@ def main() -> None:
     parser.add_argument("--metrics-out", default=None)
     parser.add_argument("--use-sample", action="store_true", help="train on the offline sample")
     parser.add_argument("--seed", type=int, default=None)
+    # transformer-only
+    parser.add_argument("--encoder", default=None, help="override the encoder (Track B)")
+    parser.add_argument("--max-train", type=int, default=None, help="cap train size (smoke run)")
+    parser.add_argument("--epochs", type=float, default=None, help="override epochs (Track B)")
+    parser.add_argument("--no-mlflow", action="store_true", help="disable MLflow logging")
     args = parser.parse_args()
 
     configure_logging()
@@ -85,36 +171,9 @@ def main() -> None:
     splits = _load_splits(data_dir, args.use_sample, seed)
 
     if args.track == "transformer":
-        raise SystemExit("Track B (transformer) training arrives in Phase 3.")
-
-    out_dir = Path(args.output_dir) if args.output_dir else PROJECT_ROOT / "artifacts" / "baseline"
-    metrics_out = (
-        Path(args.metrics_out)
-        if args.metrics_out
-        else PROJECT_ROOT / "reports" / "baseline_metrics.json"
-    )
-
-    model, metrics = _train_baseline(splits, seed)
-    saved = model.save(out_dir)  # type: ignore[attr-defined]
-
-    metrics_out.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "track": "baseline",
-        "seed": seed,
-        "splits": {k: len(v) for k, v in splits.items()},
-        "metrics": metrics,
-    }
-    metrics_out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-
-    ate_f1 = metrics["ate"]["f1"]  # type: ignore[index]
-    asc_f1 = metrics["asc"]["macro_f1"]  # type: ignore[index]
-    acd_f1 = metrics["acd"].get("micro_f1", "n/a")  # type: ignore[union-attr]
-    log.info("done", model=str(saved), ate_f1=ate_f1, asc_macro_f1=asc_f1, acd_micro_f1=acd_f1)
-    print(
-        f"[train] baseline saved -> {saved}\n"
-        f"        ATE span-F1={ate_f1:.3f}  ASC macro-F1={asc_f1:.3f}  ACD micro-F1={acd_f1}\n"
-        f"        metrics -> {metrics_out}"
-    )
+        _run_transformer(args, splits, seed)
+    else:
+        _run_baseline(args, splits, seed)
 
 
 if __name__ == "__main__":

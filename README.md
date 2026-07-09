@@ -77,15 +77,29 @@ make check     # lint + type + test
 Config: environment/secrets via `.env` (see `.env.example`, prefix `ABSA_`);
 experiment config via YAML in `configs/`. Experiments tracked with MLflow.
 
+## Results
+
+Track A vs Track B on the official **SemEval-2014** test split (1,600 sentences),
+both scored through the same char-exact evaluation code path
+(`reports/comparison.md`, figures in `reports/figures/`):
+
+| Task | Metric | Track A — baseline | Track B — deberta-v3 |
+|---|---|---|---|
+| ATE | span-F1 | 0.730 | **0.864** |
+| ACD | micro-F1 | 0.801 | **0.906** |
+| ASC | macro-F1 | 0.599 | **0.803** |
+| ASC | accuracy | 0.693 | **0.859** |
+
+Neutral is the hardest sentiment class for both tracks (the classic ABSA
+pattern); categories exist only for restaurants in SemEval-2014.
+
 ## Roadmap
 
 - [x] **P0** Scaffold — packaging, config, logging, tooling, CI, docs.
 - [x] **P1** Data — SemEval-2014 parser + fetch, splits, committed sample, dataset card.
 - [x] **P2** Track A baseline — CRF (ATE) + TF-IDF/LogReg (ACD/ASC); trained + evaluated.
-      SemEval-2014 test: **ATE span-F1 0.73 · ACD micro-F1 0.80 · ASC macro-F1 0.60**.
 - [x] **P3** Track B transformer — `deberta-v3-base` fine-tuned (ATE/ACD/ASC), bf16 on RTX 4070, MLflow.
-      SemEval-2014 test: **ATE span-F1 0.88 · ACD micro-F1 0.91 · ASC macro-F1 0.80**.
-- [ ] **P4** Evaluation — Track A vs B tables, confusion matrices, figures.
+- [x] **P4** Evaluation — unified Track A vs B scoring, confusion matrices, figures in `reports/`.
 - [ ] **P5** Serving — FastAPI `/predict` + `/health`, pydantic schemas.
 - [ ] **P5.5** CPU export — int8/ONNX artifact + latency benchmark.
 - [ ] **P6** Demo — Streamlit UI (offline, cached examples).

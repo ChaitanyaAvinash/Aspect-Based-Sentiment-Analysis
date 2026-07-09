@@ -334,6 +334,23 @@ class BaselineABSA:
     def predict_batch(self, texts: list[str]) -> list[list[AspectPrediction]]:
         return [self.predict(t) for t in texts]
 
+    # --- EvaluablePipeline interface (uniform scoring across tracks) ---
+    @property
+    def category_labels(self) -> list[str]:
+        return [str(c) for c in self.acd.mlb.classes_] if self.acd.is_fitted else []
+
+    def extract_spans(self, text: str) -> list[tuple[int, int, str]]:
+        cleaned = clean_text(text)
+        return self.ate.predict_spans(cleaned) if cleaned else []
+
+    def classify_aspect(
+        self, text: str, term: str, span: tuple[int, int]
+    ) -> tuple[Polarity, float]:
+        return self.asc.predict(clean_text(text), term)
+
+    def predict_categories(self, text: str) -> list[tuple[str, float]]:
+        return self.acd.predict(clean_text(text))
+
     def save(self, directory: str | Path) -> Path:
         import joblib
 

@@ -130,6 +130,20 @@ def mark_aspect(text: str, term: str, span: tuple[int, int], markers: tuple[str,
     return f"{text} {open_m} {term} {close_m}"
 
 
+# SentencePiece attaches the leading space and trailing punctuation to the
+# aspect word (e.g. "functions."); gold aspect terms never include these.
+_STRIP_CHARS = set(" \t\n\r.,;:!?\"'`()[]{}")
+
+
+def trim_span(text: str, start: int, end: int) -> tuple[int, int]:
+    """Strip leading/trailing whitespace + punctuation from a char span."""
+    while start < end and text[start] in _STRIP_CHARS:
+        start += 1
+    while end > start and text[end - 1] in _STRIP_CHARS:
+        end -= 1
+    return start, end
+
+
 def build_asc_dataset(
     examples: list[ABSAExample], tokenizer: Any, max_length: int, markers: tuple[str, str]
 ) -> Any:
@@ -251,16 +265,11 @@ class TransformerABSA:
         if cur is not None:
             spans.append((cur[0], cur[1]))
 
-        # Trim leading/trailing whitespace (SentencePiece offsets include the
-        # preceding space) so spans/surfaces are clean for display + matching.
         result: list[tuple[int, int, str]] = []
-        for s, e in spans:
-            while s < e and text[s].isspace():
-                s += 1
-            while e > s and text[e - 1].isspace():
-                e -= 1
-            if e > s:
-                result.append((s, e, text[s:e]))
+        for start, end in spans:
+            start, end = trim_span(text, start, end)
+            if end > start:
+                result.append((start, end, text[start:end]))
         return result
 
     def _classify_sentiment(
@@ -279,18 +288,24 @@ class TransformerABSA:
         idx = int(probs.argmax())
         return ASC_LABELS[idx], float(probs[idx])  # type: ignore[return-value]
 
-    def _top_category(self, text: str) -> str | None:
+    def _category_scores(self, text: str) -> list[tuple[str, float]]:
         if self.acd_model is None or not self.categories:
-            return None
+            return []
         import torch
 
         enc = self.tokenizer(text, truncation=True, max_length=self.max_length, return_tensors="pt")
         model = self._move(self.acd_model)
         with torch.no_grad():
             logits = model(**{k: v.to(self.device) for k, v in enc.items()}).logits[0]
-        probs = torch.sigmoid(logits)
-        idx = int(probs.argmax())
-        return self.categories[idx] if float(probs[idx]) >= 0.5 else None
+        probs = torch.sigmoid(logits).tolist()
+        return list(zip(self.categories, probs, strict=True))
+
+    def _top_category(self, text: str) -> str | None:
+        scores = self._category_scores(text)
+        if not scores:
+            return None
+        cat, prob = max(scores, key=lambda cp: cp[1])
+        return cat if prob >= 0.5 else None
 
     def predict(self, text: str) -> list[AspectPrediction]:
         cleaned = clean_text(text)
@@ -314,6 +329,23 @@ class TransformerABSA:
 
     def predict_batch(self, texts: list[str]) -> list[list[AspectPrediction]]:
         return [self.predict(t) for t in texts]
+
+    # --- EvaluablePipeline interface (uniform scoring across tracks) ---
+    @property
+    def category_labels(self) -> list[str]:
+        return list(self.categories)
+
+    def extract_spans(self, text: str) -> list[tuple[int, int, str]]:
+        cleaned = clean_text(text)
+        return self._extract_spans(cleaned) if cleaned else []
+
+    def classify_aspect(
+        self, text: str, term: str, span: tuple[int, int]
+    ) -> tuple[Polarity, float]:
+        return self._classify_sentiment(clean_text(text), term, span)
+
+    def predict_categories(self, text: str) -> list[tuple[str, float]]:
+        return [(c, p) for c, p in self._category_scores(clean_text(text)) if p >= 0.5]
 
     @classmethod
     def load(cls, directory: str | Path, device: str | None = None) -> TransformerABSA:
@@ -362,4 +394,5 @@ __all__ = [
     "category_vocab",
     "mark_aspect",
     "resolve_tokenizer",
+    "trim_span",
 ]

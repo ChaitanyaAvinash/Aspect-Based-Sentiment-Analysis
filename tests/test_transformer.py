@@ -15,6 +15,7 @@ from absa.models.transformer import (
     align_ate_labels,
     category_vocab,
     mark_aspect,
+    trim_span,
 )
 
 MARKERS = ("[ASP]", "[/ASP]")
@@ -58,6 +59,19 @@ def test_category_vocab_sorted() -> None:
     vocab = category_vocab(load_sample())
     assert vocab == sorted(vocab)
     assert "food" in vocab
+
+
+def test_trim_span_strips_punct_and_space() -> None:
+    text = "I love the touchscreen functions."
+    # span covering "touchscreen functions." including trailing period
+    start, end = trim_span(text, 10, len(text))
+    assert text[start:end] == "touchscreen functions"
+
+
+def test_trim_span_keeps_internal_punct() -> None:
+    text = "The Wi-Fi is great"
+    start, end = trim_span(text, 4, 9)
+    assert text[start:end] == "Wi-Fi"
 
 
 # --------------------------------------------------------------------------- #

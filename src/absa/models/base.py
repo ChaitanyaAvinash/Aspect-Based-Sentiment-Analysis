@@ -42,4 +42,18 @@ class ABSAPipeline(Protocol):
     def predict_batch(self, texts: list[str]) -> list[list[AspectPrediction]]: ...
 
 
-__all__ = ["ABSAPipeline", "AspectPrediction"]
+@runtime_checkable
+class EvaluablePipeline(Protocol):
+    """Per-sub-task hooks used for a fair, uniform evaluation of any track."""
+
+    @property
+    def category_labels(self) -> list[str]: ...
+
+    def extract_spans(self, text: str) -> list[tuple[int, int, str]]: ...
+
+    def classify_aspect(self, text: str, term: str, span: tuple[int, int]) -> tuple[str, float]: ...
+
+    def predict_categories(self, text: str) -> list[tuple[str, float]]: ...
+
+
+__all__ = ["ABSAPipeline", "AspectPrediction", "EvaluablePipeline"]

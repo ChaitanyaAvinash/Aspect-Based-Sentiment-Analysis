@@ -1,51 +1,49 @@
-"""Evaluate a fitted pipeline on the three sub-tasks (ATE / ACD / ASC).
+"""Evaluate any pipeline on the three sub-tasks (ATE / ACD / ASC).
 
-ASC and ACD are scored against gold aspects/categories to isolate each
-component from upstream extraction errors; ATE is scored on predicted vs gold
-spans (exact match).
+Works uniformly for both tracks via the :class:`EvaluablePipeline` interface,
+so Track A and Track B are scored through the exact same code path (a fair
+comparison). ASC and ACD are scored against gold aspects/categories to isolate
+each component from upstream extraction errors; ATE is scored on predicted vs
+gold spans (exact match).
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from absa.data.schema import ABSAExample
+from absa.models.base import EvaluablePipeline
 from absa.training.metrics import classification_metrics, multilabel_prf, span_prf
 
-if TYPE_CHECKING:
-    from absa.models.baseline import BaselineABSA
 
-
-def evaluate_ate(model: BaselineABSA, examples: list[ABSAExample]) -> dict[str, float]:
+def evaluate_ate(model: EvaluablePipeline, examples: list[ABSAExample]) -> dict[str, float]:
     gold = [[t.span for t in ex.aspect_terms if t.is_explicit] for ex in examples]
-    pred = [[(s, e) for s, e, _ in model.ate.predict_spans(ex.text)] for ex in examples]
+    pred = [[(s, e) for s, e, _ in model.extract_spans(ex.text)] for ex in examples]
     return span_prf(gold, pred)
 
 
-def evaluate_asc(model: BaselineABSA, examples: list[ABSAExample]) -> dict[str, object]:
+def evaluate_asc(model: EvaluablePipeline, examples: list[ABSAExample]) -> dict[str, object]:
     y_true: list[str] = []
     y_pred: list[str] = []
     for ex in examples:
         for term in ex.aspect_terms:
-            label, _ = model.asc.predict(ex.text, term.term)
+            label, _ = model.classify_aspect(ex.text, term.term, term.span)
             y_true.append(term.polarity)
             y_pred.append(label)
     return classification_metrics(y_true, y_pred)
 
 
-def evaluate_acd(model: BaselineABSA, examples: list[ABSAExample]) -> dict[str, object]:
-    if not model.acd.is_fitted:
-        return {"note": "ACD not fitted (no category supervision)"}
-    labels = [str(c) for c in model.acd.mlb.classes_]
+def evaluate_acd(model: EvaluablePipeline, examples: list[ABSAExample]) -> dict[str, object]:
+    labels = model.category_labels
+    if not labels:
+        return {"note": "no category supervision"}
     scored = [ex for ex in examples if ex.aspect_categories]
     gold = [{c.category for c in ex.aspect_categories} for ex in scored]
-    pred = [{c for c, _ in model.acd.predict(ex.text)} for ex in scored]
+    pred = [{c for c, _ in model.predict_categories(ex.text)} for ex in scored]
     result = multilabel_prf(gold, pred, labels)
     result["num_scored"] = len(scored)
     return result
 
 
-def evaluate_pipeline(model: BaselineABSA, examples: list[ABSAExample]) -> dict[str, object]:
+def evaluate_pipeline(model: EvaluablePipeline, examples: list[ABSAExample]) -> dict[str, object]:
     return {
         "counts": {
             "examples": len(examples),

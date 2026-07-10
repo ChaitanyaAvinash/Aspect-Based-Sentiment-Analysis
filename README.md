@@ -100,7 +100,7 @@ pattern); categories exist only for restaurants in SemEval-2014.
 - [x] **P2** Track A baseline — CRF (ATE) + TF-IDF/LogReg (ACD/ASC); trained + evaluated.
 - [x] **P3** Track B transformer — `deberta-v3-base` fine-tuned (ATE/ACD/ASC), bf16 on RTX 4070, MLflow.
 - [x] **P4** Evaluation — unified Track A vs B scoring, confusion matrices, figures in `reports/`.
-- [ ] **P5** Serving — FastAPI `/predict` + `/health`, pydantic schemas.
+- [x] **P5** Serving — FastAPI `/predict` (+ batch) & `/health`, pydantic schemas, warmup, `/docs`.
 - [ ] **P5.5** CPU export — int8/ONNX artifact + latency benchmark.
 - [ ] **P6** Demo — Streamlit UI (offline, cached examples).
 - [ ] **P7** Docker & CI — compose (API + demo), GitHub Actions.

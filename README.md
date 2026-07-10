@@ -40,10 +40,11 @@ make setup-gpu      # RTX 4070 training desktop   (or:  ./make.ps1 setup-gpu)
 # 2. Prepare data (downloads SemEval-2014 if permitted; else uses committed sample)
 make prepare-data
 
-# 3. Train, evaluate, export the CPU artifact
-make train
-make evaluate
-make export
+# 3. Train (deberta-v3 = best, reported), then build the CPU demo model
+make train          # baseline + deberta-v3 (best accuracy, for the paper)
+make evaluate       # comparison tables + figures -> reports/
+make train-demo     # fine-tune bert-base-uncased (quantization-friendly)
+make export         # int8-quantize the bert model -> artifacts/absa-transformer-int8
 
 # 4. Serve / demo
 make serve          # FastAPI at http://localhost:8000  (/docs, /health, /predict)
@@ -52,17 +53,24 @@ make demo           # Streamlit demo (CPU, offline)
 
 Without GNU Make on Windows, replace `make <t>` with `./make.ps1 <t>`.
 
+> **Why two transformer models?** `deberta-v3-base` gives the best accuracy and is
+> the reported model, but it degrades badly under dynamic int8 quantization (its
+> disentangled-attention layers are quant-sensitive). The **demo** therefore ships a
+> quantized **`bert-base-uncased`** model, which quantizes cleanly and runs in
+> **~46 ms/inference on CPU** (545 MB int8 artifact) — well under the 1-second target.
+
 ## Deploying to the demo laptop
 
 The laptop runs **inference only, offline, no GPU, no Docker**:
 
-1. On the desktop, train and export: `make train && make export`. This writes an
-   **int8-quantized (and optionally ONNX) artifact** to `artifacts/`.
-2. Copy the repo **and the `artifacts/` folder** to the laptop (artifacts are
-   gitignored because they're large — transfer them manually).
+1. On the desktop: `make train-demo && make export`. This writes the
+   **int8-quantized** deployment artifact to `artifacts/absa-transformer-int8/`
+   (~545 MB, CPU-only, self-contained).
+2. Copy the repo **and the `artifacts/absa-transformer-int8/` folder** to the laptop
+   (artifacts are gitignored because they're large — transfer them manually).
 3. On the laptop: `make setup` (installs the **CPU-only** stack), then `make demo`.
 4. The demo preloads the artifact and runs a warmup inference at startup, so the
-   first live prediction returns in **well under a second** — with no downloads.
+   first live prediction returns in **~46 ms** — no downloads, no GPU, no Docker.
 
 ## Development
 
@@ -93,6 +101,10 @@ both scored through the same char-exact evaluation code path
 Neutral is the hardest sentiment class for both tracks (the classic ABSA
 pattern); categories exist only for restaurants in SemEval-2014.
 
+**Deployed CPU model** (int8-quantized `bert-base-uncased`, what the demo runs):
+ATE span-F1 **0.803**, ACD micro-F1 **0.821**, ASC macro-F1 **0.723** — between the
+baseline and deberta-v3, at ~46 ms/inference on CPU (`reports/deploy_int8_metrics.json`).
+
 ## Roadmap
 
 - [x] **P0** Scaffold — packaging, config, logging, tooling, CI, docs.
@@ -101,8 +113,8 @@ pattern); categories exist only for restaurants in SemEval-2014.
 - [x] **P3** Track B transformer — `deberta-v3-base` fine-tuned (ATE/ACD/ASC), bf16 on RTX 4070, MLflow.
 - [x] **P4** Evaluation — unified Track A vs B scoring, confusion matrices, figures in `reports/`.
 - [x] **P5** Serving — FastAPI `/predict` (+ batch) & `/health`, pydantic schemas, warmup, `/docs`.
-- [ ] **P5.5** CPU export — int8/ONNX artifact + latency benchmark.
-- [ ] **P6** Demo — Streamlit UI (offline, cached examples).
+- [x] **P5.5** CPU export — int8-quantized bert artifact (`make export`) + `make benchmark` (46 ms/inference).
+- [x] **P6** Demo — Streamlit UI (offline, cached examples, color-coded aspects), loads the int8 artifact.
 - [ ] **P7** Docker & CI — compose (API + demo), GitHub Actions.
 - [ ] **P8** Docs & paper — model card, dataset card, IEEE paper skeleton.
 

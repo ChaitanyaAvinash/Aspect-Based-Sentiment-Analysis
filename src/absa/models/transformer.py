@@ -349,27 +349,42 @@ class TransformerABSA:
 
     @classmethod
     def load(cls, directory: str | Path, device: str | None = None) -> TransformerABSA:
-        from transformers import (
-            AutoModelForSequenceClassification,
-            AutoModelForTokenClassification,
-            AutoTokenizer,
-        )
+        import torch
+        from transformers import AutoTokenizer
 
         directory = Path(directory)
         meta = json.loads((directory / "meta.json").read_text(encoding="utf-8"))
+        quantized = bool(meta.get("quantized", False))
         if device is None:
-            import torch
-
-            device = "cuda" if torch.cuda.is_available() else "cpu"
+            # int8 dynamic-quantized models are CPU-only.
+            device = "cpu" if quantized else ("cuda" if torch.cuda.is_available() else "cpu")
         tokenizer = AutoTokenizer.from_pretrained(directory / "tokenizer")
-        ate_model = AutoModelForTokenClassification.from_pretrained(directory / "ate")
-        asc_model = AutoModelForSequenceClassification.from_pretrained(directory / "asc")
-        acd_dir = directory / "acd"
-        acd_model = (
-            AutoModelForSequenceClassification.from_pretrained(acd_dir)
-            if acd_dir.exists()
-            else None
-        )
+
+        if quantized:
+
+            def _load_pt(name: str) -> Any:
+                path = directory / f"{name}.pt"
+                if not path.exists():
+                    return None
+                return torch.load(path, map_location="cpu", weights_only=False)
+
+            ate_model = _load_pt("ate")
+            asc_model = _load_pt("asc")
+            acd_model = _load_pt("acd")
+        else:
+            from transformers import (
+                AutoModelForSequenceClassification,
+                AutoModelForTokenClassification,
+            )
+
+            ate_model = AutoModelForTokenClassification.from_pretrained(directory / "ate")
+            asc_model = AutoModelForSequenceClassification.from_pretrained(directory / "asc")
+            acd_dir = directory / "acd"
+            acd_model = (
+                AutoModelForSequenceClassification.from_pretrained(acd_dir)
+                if acd_dir.exists()
+                else None
+            )
         return cls(
             tokenizer=tokenizer,
             ate_model=ate_model,

@@ -15,7 +15,8 @@ help:  ## Show this help
 	@echo "  setup            Create CPU venv + install (demo/dev machine)"
 	@echo "  setup-gpu        Create venv + CUDA install (training desktop)"
 	@echo "  prepare-data     Download/parse SemEval -> data/processed"
-	@echo "  train            Train baseline + transformer"
+	@echo "  train            Train baseline + transformer (deberta-v3, best)"
+	@echo "  train-demo       Fine-tune bert-base for the CPU demo (quantized)"
 	@echo "  evaluate         Evaluate + write reports/figures"
 	@echo "  serve            Run FastAPI service on :8000"
 	@echo "  demo             Run Streamlit demo (CPU, offline)"
@@ -46,6 +47,10 @@ train-baseline:
 
 train-transformer:
 	$(PY) scripts/train.py --track transformer
+
+train-demo:  ## Fine-tune bert-base for the CPU demo (quantization-friendly)
+	$(PY) scripts/train.py --track transformer --encoder bert-base-uncased --epochs 3 \
+		--output-dir artifacts/transformer-bert --no-mlflow
 
 evaluate:  ## Evaluate + build reports
 	$(PY) scripts/evaluate.py

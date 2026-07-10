@@ -1,0 +1,39 @@
+{
+  "track": "transformer",
+  "seed": 42,
+  "splits": {
+    "train": 5415,
+    "val": 677,
+    "test": 1600
+  },
+  "metrics": {
+    "encoder": "bert-base-uncased",
+    "seed": 42,
+    "epochs": 3.0,
+    "ate": {
+      "loss": 0.07324399799108505,
+      "precision": 0.7772633744855967,
+      "recall": 0.8594994311717861,
+      "f1": 0.816315505132361,
+      "runtime": 6.4934,
+      "samples_per_second": 246.405,
+      "steps_per_second": 7.7
+    },
+    "asc": {
+      "loss": 0.4445306956768036,
+      "accuracy": 0.8145620022753128,
+      "macro_f1": 0.7412739786464454,
+      "runtime": 6.3716,
+      "samples_per_second": 275.913,
+      "steps_per_second": 8.632
+    },
+    "acd": {
+      "loss": 0.17425109446048737,
+      "micro_f1": 0.8947927736450585,
+      "macro_f1": 0.8732501828748692,
+      "runtime": 6.0986,
+      "samples_per_second": 125.767,
+      "steps_per_second": 3.935
+    }
+  }
+}

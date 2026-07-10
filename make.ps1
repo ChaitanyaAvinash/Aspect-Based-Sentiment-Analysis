@@ -35,6 +35,7 @@ switch ($Target) {
     }
     "prepare-data" { Invoke-Py @("scripts/prepare_data.py") }
     "train" { Invoke-Py @("scripts/train.py", "--track", "baseline"); Invoke-Py @("scripts/train.py", "--track", "transformer") }
+    "train-demo" { Invoke-Py @("scripts/train.py", "--track", "transformer", "--encoder", "bert-base-uncased", "--epochs", "3", "--output-dir", "artifacts/transformer-bert", "--no-mlflow") }
     "evaluate" { Invoke-Py @("scripts/evaluate.py") }
     "export" { Invoke-Py @("scripts/export_model.py") }
     "benchmark" { Invoke-Py @("scripts/benchmark.py") }

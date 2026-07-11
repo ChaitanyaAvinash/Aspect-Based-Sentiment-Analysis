@@ -28,8 +28,7 @@ class AspectOut(BaseModel):
 
 
 class PredictRequest(BaseModel):
-    # Empty text is allowed and returns no aspects (graceful); very long input is
-    # capped here and further truncated by the pipeline.
+    # Empty text returns no aspects; very long input is capped, then truncated by the pipeline.
     text: str = Field(
         default="", max_length=20000, examples=["The battery lasts all day but the screen is dim."]
     )

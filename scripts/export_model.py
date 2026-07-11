@@ -1,14 +1,4 @@
-"""Export a CPU deployment artifact from the trained transformer.
-
-Applies dynamic int8 quantization (``torch.quantization.quantize_dynamic``) to
-the Linear layers of each sub-model and saves a self-contained, CPU-only artifact
-that ``TransformerABSA.load`` can read (meta ``quantized: true``). Optionally also
-emits ONNX graphs (``--onnx``, best-effort, for ONNX Runtime users; the demo uses
-the int8 artifact).
-
-    python scripts/export_model.py                 # -> artifacts/absa-transformer-int8
-    python scripts/export_model.py --onnx
-"""
+"""Export an int8-quantized CPU artifact from the trained transformer (optional --onnx)."""
 
 from __future__ import annotations
 

@@ -1,9 +1,4 @@
-"""Text preprocessing and lightweight tokenization.
-
-Dependency-free (stdlib + regex) so the data layer imports without spaCy/torch.
-Provides HTML stripping, whitespace/length normalization, a regex word
-tokenizer that preserves character offsets, and BIO tagging from spans.
-"""
+"""Stdlib-only text cleaning, offset-preserving tokenization, and BIO tagging."""
 
 from __future__ import annotations
 
@@ -12,7 +7,6 @@ from dataclasses import dataclass
 
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
-# Word = run of letters/digits/underscore, or a single other non-space char.
 _TOKEN_RE = re.compile(r"\w+|[^\w\s]", re.UNICODE)
 
 
@@ -35,11 +29,7 @@ def clean_text(
     max_chars: int = 2000,
     min_chars: int = 1,
 ) -> str:
-    """Clean and length-guard a single input.
-
-    Empty/whitespace-only input returns ``""``. Overly long input is truncated
-    to ``max_chars`` (guards against pathological inputs at serving time).
-    """
+    """Clean and length-guard input; empty in -> "", over-long is truncated."""
     if text is None:
         return ""
     if strip_html_tags:
@@ -67,29 +57,21 @@ def tokenize(text: str) -> list[Token]:
 
 
 def spans_to_bio(tokens: list[Token], spans: list[tuple[int, int]]) -> list[str]:
-    """Convert character spans to token-level BIO tags for aspect extraction.
-
-    A token is ``B-ASP`` if it starts a span, ``I-ASP`` if it continues one,
-    else ``O``. Overlap is decided by character-range intersection.
-    """
+    """Character spans -> token-level BIO tags (B-ASP/I-ASP/O) by overlap."""
     tags = ["O"] * len(tokens)
     for start, end in spans:
         if start < 0 or end <= start:
             continue
         first = True
         for i, tok in enumerate(tokens):
-            if tok.start < end and tok.end > start:  # overlaps the span
+            if tok.start < end and tok.end > start:
                 tags[i] = "B-ASP" if first else "I-ASP"
                 first = False
     return tags
 
 
 def looks_english(text: str, threshold: float = 0.6) -> bool:
-    """Heuristic: is the text mostly ASCII/latin? Used to flag non-English input.
-
-    Not a language detector — just a cheap guard so the pipeline can respond
-    gracefully to clearly non-latin input.
-    """
+    """Cheap non-English guard: is the text mostly latin letters?"""
     if not text:
         return True
     ascii_letters = sum(1 for c in text if c.isascii() and c.isalpha())

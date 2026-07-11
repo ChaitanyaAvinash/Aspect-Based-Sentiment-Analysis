@@ -1,11 +1,4 @@
-"""Benchmark CPU inference latency + artifact size for a deployment artifact.
-
-    python scripts/benchmark.py                              # int8 artifact (default)
-    python scripts/benchmark.py --source artifacts/transformer   # fp32 comparison
-
-Reports per-inference latency (mean / p50 / p95) on CPU and the on-disk size —
-the numbers behind the demo laptop's sub-second target.
-"""
+"""Benchmark CPU inference latency (mean/p50/p95) and artifact size."""
 
 from __future__ import annotations
 

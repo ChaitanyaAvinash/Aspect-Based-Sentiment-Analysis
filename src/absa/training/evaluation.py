@@ -1,11 +1,4 @@
-"""Evaluate any pipeline on the three sub-tasks (ATE / ACD / ASC).
-
-Works uniformly for both tracks via the :class:`EvaluablePipeline` interface,
-so Track A and Track B are scored through the exact same code path (a fair
-comparison). ASC and ACD are scored against gold aspects/categories to isolate
-each component from upstream extraction errors; ATE is scored on predicted vs
-gold spans (exact match).
-"""
+"""Uniform ATE/ACD/ASC scoring for any pipeline: ASC/ACD on gold, ATE on predicted spans."""
 
 from __future__ import annotations
 

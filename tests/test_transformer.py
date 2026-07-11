@@ -21,9 +21,7 @@ from absa.models.transformer import (
 MARKERS = ("[ASP]", "[/ASP]")
 
 
-# --------------------------------------------------------------------------- #
 # pure functions (no torch)
-# --------------------------------------------------------------------------- #
 def test_align_ate_labels_bio() -> None:
     # [CLS] battery life is great [SEP]  — gold span "battery life" = (0, 12)
     word_ids = [None, 0, 1, 2, 3, None]
@@ -74,9 +72,7 @@ def test_trim_span_keeps_internal_punct() -> None:
     assert text[start:end] == "Wi-Fi"
 
 
-# --------------------------------------------------------------------------- #
 # dataset builders (need transformers + datasets)
-# --------------------------------------------------------------------------- #
 @pytest.fixture(scope="module")
 def tokenizer():  # type: ignore[no-untyped-def]
     pytest.importorskip("transformers")

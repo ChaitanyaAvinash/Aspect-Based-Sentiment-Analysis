@@ -1,11 +1,4 @@
-"""Normalized ABSA data schema.
-
-A single :class:`ABSAExample` is the canonical unit consumed across all tracks
-and tasks. SemEval and any other source is parsed into this shape. Aspect terms
-(with character spans + polarity) drive ATE/ASC; aspect categories (with
-polarity) drive ACD. In SemEval-2014 the two are annotated independently, so we
-keep them as separate lists rather than forcing a join.
-"""
+"""Normalized ABSA schema: ABSAExample with aspect terms (ATE/ASC) and categories (ACD)."""
 
 from __future__ import annotations
 
@@ -16,7 +9,7 @@ from pydantic import BaseModel, Field, model_validator
 Polarity = Literal["positive", "negative", "neutral"]
 Domain = Literal["restaurants", "laptops", "other"]
 
-#: Sentinel span for implicit / NULL aspects (no character offset).
+# Sentinel span for implicit/NULL aspects.
 NULL_SPAN: tuple[int, int] = (-1, -1)
 
 

@@ -1,15 +1,4 @@
-"""Evaluate trained tracks on the test split and build reports + figures.
-
-Both tracks are scored through the SAME code path (absa.training.evaluation) for
-a fair comparison. Outputs:
-  reports/comparison.json           full metrics for each available track
-  reports/comparison.md             Track A vs B results table
-  reports/figures/*.png             F1 comparison, confusion matrices, curves
-
-    python scripts/evaluate.py                 # real test split, all figures
-    python scripts/evaluate.py --use-sample    # offline smoke
-    python scripts/evaluate.py --skip-figures
-"""
+"""Evaluate trained tracks on the test split -> reports/comparison.{md,json} + figures."""
 
 from __future__ import annotations
 
@@ -62,9 +51,7 @@ def _load_models() -> dict[str, Any]:
     return models
 
 
-# --------------------------------------------------------------------------- #
 # reports
-# --------------------------------------------------------------------------- #
 def _fmt(value: Any) -> str:
     return f"{value:.3f}" if isinstance(value, int | float) else "n/a"
 
@@ -96,9 +83,7 @@ def _comparison_markdown(results: dict[str, dict[str, Any]]) -> str:
     return "\n".join(lines) + "\n"
 
 
-# --------------------------------------------------------------------------- #
 # figures
-# --------------------------------------------------------------------------- #
 def _style() -> None:
     import matplotlib as mpl
 

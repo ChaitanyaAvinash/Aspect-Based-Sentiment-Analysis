@@ -27,9 +27,7 @@ from absa.data import (
 from absa.data.preprocessing import normalize_whitespace, strip_html
 
 
-# --------------------------------------------------------------------------- #
 # schema
-# --------------------------------------------------------------------------- #
 def test_aspect_term_alignment() -> None:
     t = AspectTerm(term="pizza", polarity="positive", start=4, end=9)
     assert t.aligns_with("The pizza was good")
@@ -53,9 +51,7 @@ def test_example_rejects_misaligned_span() -> None:
         )
 
 
-# --------------------------------------------------------------------------- #
 # preprocessing
-# --------------------------------------------------------------------------- #
 def test_strip_html_and_entities() -> None:
     out = strip_html("<b>Nice</b> &amp; cheap")
     assert "<" not in out and ">" not in out
@@ -98,9 +94,7 @@ def test_looks_english() -> None:
     assert not looks_english("这家餐厅的食物很好吃")
 
 
-# --------------------------------------------------------------------------- #
 # SemEval parser
-# --------------------------------------------------------------------------- #
 SEMEVAL_2014 = """
 <sentences>
   <sentence id="1">
@@ -158,9 +152,7 @@ def test_parse_semeval_xml_file(tmp_path: Path) -> None:
     assert {t.term for t in examples[0].aspect_terms} == {"pizza", "service"}
 
 
-# --------------------------------------------------------------------------- #
 # io
-# --------------------------------------------------------------------------- #
 def test_jsonl_roundtrip(tmp_path: Path) -> None:
     examples = [
         ABSAExample(
@@ -181,9 +173,7 @@ def test_read_jsonl_missing(tmp_path: Path) -> None:
         read_jsonl(tmp_path / "nope.jsonl")
 
 
-# --------------------------------------------------------------------------- #
 # committed sample
-# --------------------------------------------------------------------------- #
 def test_sample_loads_and_aligns() -> None:
     examples = load_sample()
     assert len(examples) >= 30
@@ -194,9 +184,7 @@ def test_sample_loads_and_aligns() -> None:
             assert t.polarity in {"positive", "negative", "neutral"}
 
 
-# --------------------------------------------------------------------------- #
 # splits
-# --------------------------------------------------------------------------- #
 def test_split_ratios_validation() -> None:
     with pytest.raises(ValueError):
         SplitRatios(train=0.5, val=0.4, test=0.4)
@@ -223,9 +211,7 @@ def test_make_splits_different_seed_differs() -> None:
     assert [e.id for e in a["train"]] != [e.id for e in b["train"]]
 
 
-# --------------------------------------------------------------------------- #
 # stats
-# --------------------------------------------------------------------------- #
 def test_label_distribution() -> None:
     dist = label_distribution(load_sample())
     assert dist["num_examples"] >= 30

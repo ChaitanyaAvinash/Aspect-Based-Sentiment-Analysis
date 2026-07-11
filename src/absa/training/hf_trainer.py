@@ -1,10 +1,4 @@
-"""Track B training with HuggingFace ``Trainer`` (ATE / ACD / ASC).
-
-Fine-tunes one shared encoder three ways, evaluates on the test split, saves
-each model + the shared tokenizer + ``meta.json`` to the output dir, and logs
-params/metrics to MLflow. bf16 mixed precision is used on CUDA (RTX 4070).
-Heavy imports are local so ``import absa.training`` stays light.
-"""
+"""Track B training with HuggingFace Trainer (ATE/ACD/ASC): bf16, early stopping, MLflow."""
 
 from __future__ import annotations
 
@@ -43,9 +37,7 @@ def _subset(examples: list[ABSAExample], max_n: int | None) -> list[ABSAExample]
     return examples[:max_n] if max_n else examples
 
 
-# --------------------------------------------------------------------------- #
 # compute_metrics
-# --------------------------------------------------------------------------- #
 def _ate_compute_metrics(eval_pred: Any) -> dict[str, float]:
     import numpy as np
     from seqeval.metrics import f1_score, precision_score, recall_score
@@ -95,9 +87,7 @@ def _acd_compute_metrics(eval_pred: Any) -> dict[str, float]:
     }
 
 
-# --------------------------------------------------------------------------- #
 # Trainer wiring
-# --------------------------------------------------------------------------- #
 def _training_args(
     train_cfg: dict[str, Any],
     out_dir: Path,
@@ -170,9 +160,7 @@ def _run_task(
     return trainer.model, metrics, list(trainer.state.log_history)
 
 
-# --------------------------------------------------------------------------- #
 # Orchestration
-# --------------------------------------------------------------------------- #
 def train_transformer(
     splits: dict[str, list[ABSAExample]],
     model_cfg: dict[str, Any],

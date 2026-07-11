@@ -1,16 +1,4 @@
-"""Track B — transformer encoder fine-tuned for ATE / ACD / ASC.
-
-One shared pre-trained encoder (default ``microsoft/deberta-v3-base``, fallback
-``bert-base-uncased``) is fine-tuned three ways:
-
-* ATE  -> token classification (BIO) with sub-word label alignment.
-* ACD  -> multi-label sequence classification (restaurants only).
-* ASC  -> sequence classification with the aspect marked by special tokens.
-
-This module holds the config, dataset encoders, and the inference pipeline
-(:class:`TransformerABSA`). Training lives in ``absa.training.hf_trainer``.
-Heavy torch/transformers imports are done lazily inside functions.
-"""
+"""Track B config, dataset encoders, and inference pipeline (ATE/ACD/ASC)."""
 
 from __future__ import annotations
 
@@ -39,9 +27,7 @@ class TransformerConfig:
     asc_markers: tuple[str, str] = ("[ASP]", "[/ASP]")
 
 
-# --------------------------------------------------------------------------- #
 # Encoder / tokenizer resolution (primary -> fallback)
-# --------------------------------------------------------------------------- #
 def resolve_tokenizer(cfg: TransformerConfig) -> tuple[Any, str]:
     """Return (fast tokenizer, encoder_name), falling back if the primary fails."""
     from transformers import AutoTokenizer
@@ -58,9 +44,7 @@ def resolve_tokenizer(cfg: TransformerConfig) -> tuple[Any, str]:
     raise RuntimeError("Could not load any tokenizer:\n" + "\n".join(errors))
 
 
-# --------------------------------------------------------------------------- #
 # ATE — sub-word BIO label alignment
-# --------------------------------------------------------------------------- #
 def align_ate_labels(
     word_ids: list[int | None],
     offsets: list[tuple[int, int]],
@@ -119,9 +103,7 @@ def build_ate_dataset(examples: list[ABSAExample], tokenizer: Any, max_length: i
     )
 
 
-# --------------------------------------------------------------------------- #
 # ASC — aspect marking
-# --------------------------------------------------------------------------- #
 def mark_aspect(text: str, term: str, span: tuple[int, int], markers: tuple[str, str]) -> str:
     open_m, close_m = markers
     start, end = span
@@ -130,8 +112,7 @@ def mark_aspect(text: str, term: str, span: tuple[int, int], markers: tuple[str,
     return f"{text} {open_m} {term} {close_m}"
 
 
-# SentencePiece attaches the leading space and trailing punctuation to the
-# aspect word (e.g. "functions."); gold aspect terms never include these.
+# SentencePiece attaches leading space + trailing punctuation to the aspect word.
 _STRIP_CHARS = set(" \t\n\r.,;:!?\"'`()[]{}")
 
 
@@ -161,9 +142,7 @@ def build_asc_dataset(
     )
 
 
-# --------------------------------------------------------------------------- #
 # ACD — multi-label
-# --------------------------------------------------------------------------- #
 def category_vocab(examples: list[ABSAExample]) -> list[str]:
     cats: set[str] = set()
     for ex in examples:
@@ -195,9 +174,7 @@ def build_acd_dataset(
     )
 
 
-# --------------------------------------------------------------------------- #
 # Inference pipeline
-# --------------------------------------------------------------------------- #
 @dataclass
 class TransformerABSA:
     """End-to-end Track B pipeline (implements the ABSAPipeline protocol)."""

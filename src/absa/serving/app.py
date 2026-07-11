@@ -1,10 +1,4 @@
-"""FastAPI service for ABSA.
-
-Preloads the model and runs a warmup inference at startup (via the lifespan
-handler) so the first live prediction is fast. OpenAPI docs at ``/docs``.
-
-    uvicorn absa.serving.app:app --port 8000
-"""
+"""FastAPI ABSA service: preload + warmup at startup; OpenAPI at /docs."""
 
 from __future__ import annotations
 

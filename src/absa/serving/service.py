@@ -1,9 +1,4 @@
-"""Model service: resolves, loads, warms up, and serves a pipeline.
-
-Resolution order (best available wins), all on CPU by default (the deployment
-target). If nothing is on disk it bootstraps a baseline on the committed sample
-so the API always boots — useful for CI and first-run demos.
-"""
+"""Resolve, load, warm up, and serve a pipeline on CPU (bootstraps sample baseline if none)."""
 
 from __future__ import annotations
 

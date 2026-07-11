@@ -1,13 +1,4 @@
-"""Track A — classical, CPU-friendly, interpretable baseline.
-
-* ATE: linear-chain CRF (sklearn-crfsuite) over spaCy token features (BIO).
-* ACD: TF-IDF + one-vs-rest logistic regression (multi-label), restaurants only.
-* ASC: TF-IDF + LogisticRegression/LinearSVC on the sentence with the aspect
-  marked.
-
-Heavy imports (spaCy / sklearn / sklearn_crfsuite) are done lazily so that
-``import absa.models`` stays cheap and dependency-free.
-"""
+"""Track A baseline: CRF (ATE) + TF-IDF/LogReg (ACD, ASC). Heavy imports are lazy."""
 
 from __future__ import annotations
 
@@ -34,9 +25,7 @@ def _get_nlp() -> Any:
     return _NLP
 
 
-# --------------------------------------------------------------------------- #
 # CRF feature engineering
-# --------------------------------------------------------------------------- #
 def _token_features(tokens: list[Any], i: int) -> dict[str, Any]:
     tok = tokens[i]
     word = tok.text
@@ -107,9 +96,7 @@ def _decode_spans(tokens: list[Any], tags: list[str]) -> list[tuple[int, int]]:
     return spans
 
 
-# --------------------------------------------------------------------------- #
 # Sub-models
-# --------------------------------------------------------------------------- #
 class BaselineATE:
     """Aspect Term Extraction via CRF."""
 
@@ -276,9 +263,7 @@ class BaselineASC:
         return self.classes_[idx], float(proba[idx])  # type: ignore[return-value]
 
 
-# --------------------------------------------------------------------------- #
 # Orchestrator
-# --------------------------------------------------------------------------- #
 @dataclass
 class BaselineABSA:
     """End-to-end Track A pipeline (implements the ABSAPipeline protocol)."""

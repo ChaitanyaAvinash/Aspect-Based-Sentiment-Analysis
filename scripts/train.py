@@ -1,10 +1,4 @@
-"""Train a track and write evaluation metrics.
-
-    python scripts/train.py --track baseline
-    python scripts/train.py --track baseline --use-sample   # offline smoke run
-
-Track B (transformer) lands in Phase 3.
-"""
+"""Train a track (baseline|transformer) and write evaluation metrics."""
 
 from __future__ import annotations
 

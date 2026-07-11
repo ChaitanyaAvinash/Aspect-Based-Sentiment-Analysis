@@ -36,9 +36,7 @@ def trained() -> tuple[BaselineABSA, list]:
     return model, examples
 
 
-# --------------------------------------------------------------------------- #
 # pipeline
-# --------------------------------------------------------------------------- #
 def test_predict_returns_valid_predictions(trained: tuple[BaselineABSA, list]) -> None:
     model, _ = trained
     preds = model.predict("The pizza was great but the service was slow.")
@@ -95,9 +93,7 @@ def test_evaluate_pipeline_shape(trained: tuple[BaselineABSA, list]) -> None:
     assert "macro_f1" in result["asc"]
 
 
-# --------------------------------------------------------------------------- #
 # metrics
-# --------------------------------------------------------------------------- #
 def test_span_prf_perfect() -> None:
     assert span_prf([[(0, 5)]], [[(0, 5)]])["f1"] == 1.0
 

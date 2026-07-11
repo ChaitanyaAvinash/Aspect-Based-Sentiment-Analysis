@@ -1,15 +1,4 @@
-"""Prepare ABSA datasets -> data/processed/{train,val,test}.jsonl (+ stats.json).
-
-Source resolution (``--source auto``):
-  1. Official SemEval XML in data/raw/  (most authoritative; uses gold test split).
-  2. Hugging Face mirror   (if online and not ``--offline``).
-  3. Committed sample set  (always works, fully offline).
-
-Examples:
-  python scripts/prepare_data.py                 # auto (xml -> hf -> sample)
-  python scripts/prepare_data.py --source sample # force the offline sample
-  python scripts/prepare_data.py --offline       # skip the HF download
-"""
+"""Prepare ABSA data -> data/processed/. Source auto: data/raw XML -> HF mirror -> sample."""
 
 from __future__ import annotations
 
@@ -50,9 +39,7 @@ def _domain_from_name(name: str) -> str:
     return "other"
 
 
-# --------------------------------------------------------------------------- #
 # Source 1: official SemEval XML in data/raw/
-# --------------------------------------------------------------------------- #
 def _load_from_xml(
     raw_dir: Path, drop_conflict: bool
 ) -> tuple[list[ABSAExample], list[ABSAExample]]:
@@ -68,9 +55,7 @@ def _load_from_xml(
     return train_pool, official_test
 
 
-# --------------------------------------------------------------------------- #
 # Source 2: Hugging Face mirror
-# --------------------------------------------------------------------------- #
 def _domain_from_config(name: str, cfg: str | None) -> str:
     return _domain_from_name(f"{name} {cfg or ''}")
 
@@ -239,9 +224,7 @@ def _load_from_hf(
     return [], []
 
 
-# --------------------------------------------------------------------------- #
 # Orchestration
-# --------------------------------------------------------------------------- #
 def _write_outputs(splits: dict[str, list[ABSAExample]], out_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     for name, items in splits.items():

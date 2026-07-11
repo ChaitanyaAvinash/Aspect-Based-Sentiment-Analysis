@@ -1,9 +1,4 @@
-"""Structured logging setup (structlog over the stdlib).
-
-Call :func:`configure_logging` once at process start (API, CLI, demo). Use
-:func:`get_logger` everywhere else. Console renderer by default; JSON when
-``ABSA_LOG_JSON=true`` (recommended for the serving process).
-"""
+"""Structured logging: configure_logging() at startup, get_logger() elsewhere."""
 
 from __future__ import annotations
 
@@ -17,13 +12,7 @@ from absa.config import get_settings
 
 
 def configure_logging(level: str | None = None, json_logs: bool | None = None) -> None:
-    """Configure structlog + stdlib logging.
-
-    Args:
-        level: Log level name; defaults to ``ABSA_LOG_LEVEL``.
-        json_logs: Force JSON (True) or console (False) output; defaults to
-            ``ABSA_LOG_JSON``.
-    """
+    """Configure structlog + stdlib logging (level/json default to settings)."""
     settings = get_settings()
     level_name = (level or settings.log_level).upper()
     numeric_level = getattr(logging, level_name, logging.INFO)

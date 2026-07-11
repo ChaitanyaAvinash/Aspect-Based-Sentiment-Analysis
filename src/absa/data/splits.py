@@ -1,9 +1,4 @@
-"""Deterministic, stratified train/val/test splitting.
-
-Stdlib-only (no sklearn) so the data layer stays light. Stratifies by a
-sentence-level label (default: majority aspect-term polarity) so class balance
-is preserved across splits, and is fully reproducible given a seed.
-"""
+"""Deterministic, seeded, stratified train/val/test splitting (stdlib only)."""
 
 from __future__ import annotations
 
@@ -27,11 +22,7 @@ class SplitRatios:
 
 
 def sentence_label(example: ABSAExample) -> str:
-    """A single stratification label per example.
-
-    Majority aspect-term polarity; falls back to majority category polarity;
-    ``none`` if the example has no annotations.
-    """
+    """Stratification label: majority term polarity, else category, else 'none'."""
     polarities = [t.polarity for t in example.aspect_terms]
     if not polarities:
         polarities = [c.polarity for c in example.aspect_categories]
@@ -47,11 +38,7 @@ def make_splits(
     seed: int = 42,
     stratify: bool = True,
 ) -> dict[str, list[ABSAExample]]:
-    """Split examples into train/val/test.
-
-    Deterministic for a fixed ``seed``. When ``stratify`` is True, each label
-    group is split by the same ratios so distributions match across splits.
-    """
+    """Split into train/val/test, deterministic per seed, optionally stratified."""
     ratios = ratios or SplitRatios()
     rng = random.Random(seed)
 

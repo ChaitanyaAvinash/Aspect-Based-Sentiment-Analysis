@@ -6,10 +6,8 @@ import html
 
 from absa.models.base import AspectPrediction
 
-# aqua / red / yellow — matches the reports' validated palette.
 SENTIMENT_COLORS = {"positive": "#1baf7a", "negative": "#e34948", "neutral": "#eda100"}
 
-# Cached example reviews so the demo is presentable with zero typing.
 EXAMPLE_REVIEWS = [
     "The pizza was delicious but the service was painfully slow.",
     "Battery life is amazing and the screen is gorgeous, though the keyboard feels cheap.",
@@ -30,7 +28,7 @@ def highlight_html(text: str, aspects: list[AspectPrediction]) -> str:
         parts.append(html.escape(text[cursor : a.start]))
         color = SENTIMENT_COLORS.get(a.sentiment, "#888888")
         segment = html.escape(text[a.start : a.end])
-        tip = f"{a.sentiment} · {a.confidence:.0%}" + (f" · {a.category}" if a.category else "")
+        tip = f"{a.sentiment} {a.confidence:.0%}" + (f" - {a.category}" if a.category else "")
         parts.append(
             f'<span style="background:{color}26;border-bottom:3px solid {color};'
             f'border-radius:4px;padding:0 3px" title="{tip}">{segment}</span>'

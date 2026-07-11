@@ -1,9 +1,4 @@
-"""SemEval-2014 Task 4 XML parser.
-
-Parses the official ``<sentences>`` XML (Restaurants / Laptops) into normalized
-:class:`~absa.data.schema.ABSAExample` objects. Also handles the SemEval-2015/16
-``<Opinions>`` layout defensively, so newer files parse too.
-"""
+"""SemEval-2014 (and 2015/16 Opinions) XML parser into normalized ABSAExamples."""
 
 from __future__ import annotations
 

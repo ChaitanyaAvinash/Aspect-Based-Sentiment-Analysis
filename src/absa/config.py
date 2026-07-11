@@ -1,13 +1,4 @@
-"""Configuration for ABSA.
-
-Two layers:
-
-* :class:`Settings` — runtime/environment settings loaded from ``.env`` /
-  environment variables (via ``pydantic-settings``). This is where secrets and
-  machine-specific choices live. Never hard-code secrets in source.
-* YAML configs under ``configs/`` — declarative experiment configuration
-  (data, model, training). Loaded with :func:`load_yaml_config`.
-"""
+"""Env/.env settings (pydantic-settings) and YAML experiment-config loading."""
 
 from __future__ import annotations
 
@@ -69,11 +60,7 @@ def get_settings() -> Settings:
 
 
 def load_yaml_config(path: str | Path) -> dict[str, Any]:
-    """Load a YAML config file into a plain dict.
-
-    Relative paths are resolved against the project root. The document root
-    must be a mapping.
-    """
+    """Load a YAML config into a dict (relative paths resolve to project root)."""
     p = Path(path)
     if not p.is_absolute():
         p = PROJECT_ROOT / p

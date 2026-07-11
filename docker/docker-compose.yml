@@ -1,0 +1,35 @@
+# Containerized ABSA: FastAPI service + Streamlit demo (both CPU).
+# Separate from the live-demo path (which uses `make demo`, no Docker).
+#
+#   docker compose -f docker/docker-compose.yml up --build
+#
+# Mounts the local artifacts/ read-only; if empty, services bootstrap a baseline
+# on the committed sample so they still start.
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: absa:latest
+    container_name: absa-api
+    ports:
+      - "8000:8000"
+    environment:
+      - ABSA_DEVICE=cpu
+    volumes:
+      - ../artifacts:/app/artifacts:ro
+
+  demo:
+    image: absa:latest
+    container_name: absa-demo
+    command: >
+      streamlit run app/streamlit_app.py
+      --server.port=8501 --server.address=0.0.0.0 --server.headless=true
+    ports:
+      - "8501:8501"
+    environment:
+      - ABSA_DEVICE=cpu
+    volumes:
+      - ../artifacts:/app/artifacts:ro
+    depends_on:
+      - api

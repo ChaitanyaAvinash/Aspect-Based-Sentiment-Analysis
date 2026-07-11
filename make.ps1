@@ -45,6 +45,9 @@ switch ($Target) {
     "lint" { Invoke-Py @("-m", "ruff", "check", "."); Invoke-Py @("-m", "black", "--check", ".") }
     "format" { Invoke-Py @("-m", "ruff", "check", "--fix", "."); Invoke-Py @("-m", "black", ".") }
     "type" { Invoke-Py @("-m", "mypy", "src/absa") }
+    "docker-build" { docker build -t absa:latest -f docker/Dockerfile . }
+    "docker-up" { docker compose -f docker/docker-compose.yml up --build }
+    "docker-down" { docker compose -f docker/docker-compose.yml down }
     "check" { & $PSCommandPath lint; & $PSCommandPath type; & $PSCommandPath test }
     default { Write-Host "Unknown target: $Target"; exit 1 }
 }

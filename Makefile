@@ -7,8 +7,9 @@ endif
 PIP := $(PY) -m pip
 
 .DEFAULT_GOAL := help
-.PHONY: help setup setup-gpu prepare-data train train-baseline train-transformer \
-        evaluate serve demo export benchmark test lint format type check clean
+.PHONY: help setup setup-gpu prepare-data train train-baseline train-transformer train-demo \
+        evaluate serve demo export benchmark test lint format type check clean \
+        docker-build docker-up docker-down
 
 help:  ## Show this help
 	@echo "ABSA targets:"
@@ -82,6 +83,15 @@ type:  ## mypy
 	$(PY) -m mypy src/absa
 
 check: lint type test  ## All gates
+
+docker-build:  ## Build the CPU service image (separate from the demo path)
+	docker build -t absa:latest -f docker/Dockerfile .
+
+docker-up:  ## Run API + demo via docker compose
+	docker compose -f docker/docker-compose.yml up --build
+
+docker-down:  ## Stop the compose stack
+	docker compose -f docker/docker-compose.yml down
 
 clean:  ## Remove caches/build artifacts
 	$(PY) -c "import shutil,glob,os; [shutil.rmtree(p, ignore_errors=True) for p in ['.pytest_cache','.mypy_cache','.ruff_cache','build','dist','htmlcov']]"

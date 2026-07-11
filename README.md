@@ -16,8 +16,32 @@ Two comparable tracks are provided so results can be compared head-to-head:
 - **Track A — classical baseline**: spaCy/CRF extraction + TF-IDF → LinearSVC/LogReg. CPU, interpretable.
 - **Track B — transformer** (primary): fine-tuned `microsoft/deberta-v3-base` (fallback `bert-base-uncased`).
 
-> **Status:** Phase 0 (scaffold) complete. Data, models, serving, and the demo
-> land in subsequent phases — see the roadmap below.
+> **Status:** complete end-to-end — data, both tracks, evaluation, FastAPI serving,
+> int8 CPU export, and an offline Streamlit demo. See the roadmap and results below.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Data
+      SE[SemEval-2014<br/>HF mirror] --> P[prepare_data.py]
+      SM[committed sample] --> P
+      P --> DS[(train/val/test<br/>JSONL)]
+    end
+    subgraph Train["Train (RTX 4070)"]
+      DS --> A[Track A: CRF + TF-IDF]
+      DS --> B[Track B: deberta-v3<br/>ATE·ACD·ASC]
+      B --> EXP[export_model.py<br/>int8 quantize]
+    end
+    A --> EV[evaluate.py<br/>reports + figures]
+    B --> EV
+    EXP --> ART[(artifacts/<br/>int8 CPU model)]
+    subgraph Serve["Serve / Demo (CPU, offline)"]
+      ART --> SVC[ModelService<br/>preload + warmup]
+      SVC --> API[FastAPI /predict]
+      SVC --> UI[Streamlit demo]
+    end
+```
 
 ## Two target machines
 
@@ -115,9 +139,16 @@ baseline and deberta-v3, at ~46 ms/inference on CPU (`reports/deploy_int8_metric
 - [x] **P5** Serving — FastAPI `/predict` (+ batch) & `/health`, pydantic schemas, warmup, `/docs`.
 - [x] **P5.5** CPU export — int8-quantized bert artifact (`make export`) + `make benchmark` (46 ms/inference).
 - [x] **P6** Demo — Streamlit UI (offline, cached examples, color-coded aspects), loads the int8 artifact.
-- [ ] **P7** Docker & CI — compose (API + demo), GitHub Actions.
-- [ ] **P8** Docs & paper — model card, dataset card, IEEE paper skeleton.
+- [x] **P7** Docker & CI — `docker/` (Dockerfile + compose, API + demo), GitHub Actions (lint/type/test).
+- [x] **P8** Docs & paper — model card, dataset card, IEEE paper skeleton, architecture diagram.
+
+## Reports & docs
+
+- `reports/comparison.md` + `reports/figures/` — Track A vs B results and figures.
+- `reports/model_card.md` — intended use, metrics, limitations, bias/fairness, SDGs.
+- `reports/dataset_card.md` — SemEval-2014 source, splits, distribution, license.
+- `reports/paper/paper.md` — IEEE-style paper skeleton, pre-filled from real results.
 
 ## License
 
-MIT (see `pyproject.toml`).
+MIT — see [LICENSE](LICENSE).

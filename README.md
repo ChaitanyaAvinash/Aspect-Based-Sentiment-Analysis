@@ -144,6 +144,7 @@ baseline and deberta-v3, at ~46 ms/inference on CPU (`reports/deploy_int8_metric
 
 ## Reports & docs
 
+- `reports/PROJECT_REPORT.md` — full project report (idea, codebase, results, hurdles, future scope).
 - `reports/comparison.md` + `reports/figures/` — Track A vs B results and figures.
 - `reports/model_card.md` — intended use, metrics, limitations, bias/fairness, SDGs.
 - `reports/dataset_card.md` — SemEval-2014 source, splits, distribution, license.

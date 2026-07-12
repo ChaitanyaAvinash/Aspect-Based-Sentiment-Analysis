@@ -44,8 +44,9 @@ mlruns/
 *.bin
 *.safetensors
 
-# ---- OS / IDE ----
+# ---- OS / IDE / tooling ----
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/
+.claude/

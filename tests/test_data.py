@@ -13,6 +13,8 @@ from absa.data import (
     AspectTerm,
     SplitRatios,
     clean_text,
+    clean_text_aligned,
+    find_nearest,
     label_distribution,
     load_sample,
     looks_english,
@@ -69,6 +71,39 @@ def test_clean_text_truncates_and_guards() -> None:
     assert clean_text(None) == ""  # type: ignore[arg-type]
     long = "a " * 2000
     assert len(clean_text(long, max_chars=50)) <= 50
+
+
+def test_clean_text_matches_regex_pipeline() -> None:
+    # The aligned implementation must clean exactly like strip_html + normalize_whitespace.
+    for raw in ["  a\t b\n\n c ", "<p>hi</p>  &amp; you&nbsp;all", "x\u00a0y", "plain"]:
+        assert clean_text(raw) == normalize_whitespace(strip_html(raw))
+
+
+def test_clean_text_aligned_maps_spans_back_to_raw() -> None:
+    raw = "Great place.\n\nThe <b>pizza</b> was  good &amp; the service\u00a0slow."
+    view = clean_text_aligned(raw)
+    for term in ("pizza", "service", "&"):
+        start = view.text.index(term)
+        raw_start, raw_end = view.to_raw(start, start + len(term))
+        expected = "&amp;" if term == "&" else term
+        assert raw[raw_start:raw_end] == expected
+
+
+def test_clean_text_aligned_maps_raw_spans_to_clean() -> None:
+    raw = "  The   battery life  is great"
+    view = clean_text_aligned(raw)
+    start = raw.index("battery life")
+    clean = view.to_clean(start, start + len("battery life"))
+    assert clean is not None
+    assert view.text[clean[0] : clean[1]] == "battery life"
+    assert view.to_clean(-1, -1) is None
+
+
+def test_find_nearest_picks_closest_occurrence() -> None:
+    text = "the food here, oh the food"
+    assert find_nearest(text, "food", 20) == text.rindex("food")
+    assert find_nearest(text, "food", 0) == text.index("food")
+    assert find_nearest(text, "wine", 0) == -1
 
 
 def test_tokenize_offsets_roundtrip() -> None:

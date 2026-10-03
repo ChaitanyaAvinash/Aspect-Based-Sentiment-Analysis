@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from absa.data.preprocessing import clean_text
+from absa.data.preprocessing import clean_text, clean_text_aligned
 from absa.data.schema import ABSAExample, Polarity
 from absa.models.base import AspectPrediction
 
@@ -174,10 +175,95 @@ def build_acd_dataset(
     )
 
 
+# BIO decoding (shared by inference; pure, testable)
+def decode_bio(
+    word_ids: list[int | None], offsets: list[list[int]], pred_ids: list[int]
+) -> list[tuple[int, int]]:
+    """Per-subword predictions -> word-level BIO (first sub-word) -> char spans."""
+    word_tag: dict[int, str] = {}
+    word_span: dict[int, list[int]] = {}
+    for idx, wid in enumerate(word_ids):
+        if wid is None:
+            continue
+        start, end = offsets[idx]
+        if wid not in word_span:
+            word_span[wid] = [start, end]
+            word_tag[wid] = ATE_ID2LABEL.get(pred_ids[idx], "O")
+        else:
+            word_span[wid][1] = end
+
+    spans: list[tuple[int, int]] = []
+    cur: list[int] | None = None
+    for wid in sorted(word_span):
+        tag = word_tag[wid]
+        s, e = word_span[wid]
+        if tag == "B-ASP":
+            if cur is not None:
+                spans.append((cur[0], cur[1]))
+            cur = [s, e]
+        elif tag == "I-ASP" and cur is not None:
+            cur[1] = e
+        else:
+            if cur is not None:
+                spans.append((cur[0], cur[1]))
+                cur = None
+    if cur is not None:
+        spans.append((cur[0], cur[1]))
+    return spans
+
+
+# int8 CPU artifact: weights only (no pickled modules)
+TASK_HEADS: dict[str, str] = {"ate": "token", "asc": "seq", "acd": "seq"}
+INT8_WEIGHTS = "model_int8.pt"
+
+
+def quantize_int8(model: Any) -> Any:
+    """Dynamic int8 on every Linear layer (returns a quantized copy)."""
+    import torch
+
+    model.eval()
+    return torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
+
+
+def save_int8(model: Any, directory: Path) -> None:
+    """Write config + quantized state_dict (loadable with ``weights_only=True``)."""
+    import torch
+
+    directory.mkdir(parents=True, exist_ok=True)
+    model.config.save_pretrained(directory)
+    torch.save(quantize_int8(model).state_dict(), directory / INT8_WEIGHTS)
+
+
+def load_int8(directory: Path, head: str) -> Any:
+    """Rebuild the architecture from config, quantize it the same way, load weights."""
+    import torch
+    from transformers import (
+        AutoConfig,
+        AutoModelForSequenceClassification,
+        AutoModelForTokenClassification,
+    )
+
+    auto = (
+        AutoModelForTokenClassification if head == "token" else AutoModelForSequenceClassification
+    )
+    model = quantize_int8(auto.from_config(AutoConfig.from_pretrained(directory)))
+    state = torch.load(directory / INT8_WEIGHTS, map_location="cpu", weights_only=True)
+    model.load_state_dict(state)
+    return model.eval()
+
+
 # Inference pipeline
+# Sentence-ish units used to pack long reviews into encoder-sized windows.
+_SENTENCE_RE = re.compile(r".+?(?:[.!?]+(?=\s)|$)", re.S)
+_MARKER_BUDGET = 8  # tokens reserved for the ASC aspect markers
+
+
 @dataclass
 class TransformerABSA:
-    """End-to-end Track B pipeline (implements the ABSAPipeline protocol)."""
+    """End-to-end Track B pipeline (implements the ABSAPipeline protocol).
+
+    Spans returned by ``predict``/``extract_spans`` index into the caller's raw text.
+    """
 
     tokenizer: Any
     ate_model: Any
@@ -187,119 +273,136 @@ class TransformerABSA:
     max_length: int = 128
     markers: tuple[str, str] = ("[ASP]", "[/ASP]")
     device: str = "cpu"
+    quantized: bool = False
+    # Sigmoid cutoff for ACD. int8 shrinks category probabilities, so export
+    # re-tunes this on the validation split and stores it in meta.json.
+    acd_threshold: float = 0.5
 
-    def _move(self, model: Any) -> Any:
-        return model.to(self.device).eval()
+    def __post_init__(self) -> None:
+        for model in (self.ate_model, self.asc_model, self.acd_model):
+            if model is not None:
+                model.to(self.device).eval()
 
-    def _extract_spans(self, text: str) -> list[tuple[int, int, str]]:
-        import torch
+    def _batches(self, n: int) -> list[list[int]]:
+        """Index groups to run through the encoder together.
 
-        enc = self.tokenizer(
-            text,
+        Dynamic int8 picks activation scales per input tensor, so in a batch one
+        sequence (and its padding) would shift another's prediction; quantized
+        models therefore run one sequence per forward pass.
+        """
+        return [[i] for i in range(n)] if self.quantized else [list(range(n))]
+
+    def _encode(self, texts: list[str], **kwargs: Any) -> Any:
+        return self.tokenizer(
+            texts,
             truncation=True,
             max_length=self.max_length,
-            return_offsets_mapping=True,
+            padding=True,
             return_tensors="pt",
+            **kwargs,
         )
-        offsets = enc.pop("offset_mapping")[0].tolist()
-        word_ids = enc.word_ids(0)
-        model = self._move(self.ate_model)
-        with torch.no_grad():
-            logits = model(**{k: v.to(self.device) for k, v in enc.items()}).logits[0]
-        pred_ids = logits.argmax(-1).tolist()
 
-        # first sub-word per word -> word tag + word char span
-        word_tag: dict[int, str] = {}
-        word_span: dict[int, list[int]] = {}
-        seen: set[int] = set()
-        for idx, wid in enumerate(word_ids):
-            if wid is None:
-                continue
-            start, end = offsets[idx]
-            if wid not in word_span:
-                word_span[wid] = [start, end]
-            else:
-                word_span[wid][1] = end
-            if wid not in seen:
-                seen.add(wid)
-                word_tag[wid] = ATE_ID2LABEL.get(pred_ids[idx], "O")
-
-        spans: list[tuple[int, int]] = []
-        cur: list[int] | None = None
-        for wid in sorted(word_span):
-            tag = word_tag.get(wid, "O")
-            s, e = word_span[wid]
-            if tag == "B-ASP":
-                if cur is not None:
-                    spans.append((cur[0], cur[1]))
-                cur = [s, e]
-            elif tag == "I-ASP" and cur is not None:
-                cur[1] = e
-            else:
-                if cur is not None:
-                    spans.append((cur[0], cur[1]))
-                    cur = None
-        if cur is not None:
-            spans.append((cur[0], cur[1]))
-
-        result: list[tuple[int, int, str]] = []
-        for start, end in spans:
-            start, end = trim_span(text, start, end)
-            if end > start:
-                result.append((start, end, text[start:end]))
-        return result
-
-    def _classify_sentiment(
-        self, text: str, term: str, span: tuple[int, int]
-    ) -> tuple[Polarity, float]:
+    def _logits(self, model: Any, enc: Any) -> Any:
         import torch
 
-        marked = mark_aspect(text, term, span, self.markers)
-        enc = self.tokenizer(
-            marked, truncation=True, max_length=self.max_length, return_tensors="pt"
-        )
-        model = self._move(self.asc_model)
         with torch.no_grad():
-            logits = model(**{k: v.to(self.device) for k, v in enc.items()}).logits[0]
-        probs = torch.softmax(logits, dim=-1)
-        idx = int(probs.argmax())
-        return ASC_LABELS[idx], float(probs[idx])  # type: ignore[return-value]
+            return model(**{k: v.to(self.device) for k, v in enc.items()}).logits
 
-    def _category_scores(self, text: str) -> list[tuple[str, float]]:
+    def _windows(self, text: str) -> list[tuple[int, int]]:
+        """Sentence-aligned windows that fit the encoder.
+
+        Text within budget (every SemEval sentence) stays one window; longer reviews
+        are packed sentence by sentence instead of being cut off at ``max_length``.
+        """
+        budget = self.max_length - _MARKER_BUDGET
+        if len(self.tokenizer(text)["input_ids"]) <= budget:
+            return [(0, len(text))]
+        windows: list[tuple[int, int]] = []
+        for match in _SENTENCE_RE.finditer(text):
+            start, end = match.span()
+            merged = text[windows[-1][0] : end] if windows else ""
+            if windows and len(self.tokenizer(merged)["input_ids"]) <= budget:
+                windows[-1] = (windows[-1][0], end)
+            else:
+                windows.append((start, end))
+        return windows
+
+    def _extract_spans(self, text: str, windows: list[tuple[int, int]]) -> list[tuple[int, int]]:
+        chunks = [text[s:e] for s, e in windows]
+        spans: list[tuple[int, int]] = []
+        for group in self._batches(len(chunks)):
+            enc = self._encode([chunks[i] for i in group], return_offsets_mapping=True)
+            offsets = enc.pop("offset_mapping").tolist()
+            pred_ids = self._logits(self.ate_model, enc).argmax(-1).tolist()
+            for row, i in enumerate(group):
+                for start, end in decode_bio(enc.word_ids(row), offsets[row], pred_ids[row]):
+                    start, end = trim_span(chunks[i], start, end)
+                    if end > start:
+                        spans.append((windows[i][0] + start, windows[i][0] + end))
+        return spans
+
+    def _classify(
+        self,
+        text: str,
+        windows: list[tuple[int, int]],
+        aspects: list[tuple[str, tuple[int, int]]],
+    ) -> list[tuple[Polarity, float]]:
+        """Sentiment per aspect (batched for fp32 models, see ``_batches``)."""
+        if not aspects:
+            return []
+        import torch
+
+        marked: list[str] = []
+        for term, (start, end) in aspects:
+            w_start, w_end = next((w for w in windows if w[0] <= start < w[1]), windows[0])
+            span = (start - w_start, end - w_start)
+            marked.append(mark_aspect(text[w_start:w_end], term, span, self.markers))
+        logits = torch.cat(
+            [
+                self._logits(self.asc_model, self._encode([marked[i] for i in group]))
+                for group in self._batches(len(marked))
+            ]
+        )
+        confidence, idx = torch.softmax(logits, dim=-1).max(dim=-1)
+        return [
+            (ASC_LABELS[i], float(c))
+            for i, c in zip(idx.tolist(), confidence.tolist(), strict=True)
+        ]
+
+    def _category_scores(
+        self, text: str, windows: list[tuple[int, int]]
+    ) -> list[tuple[str, float]]:
         if self.acd_model is None or not self.categories:
             return []
         import torch
 
-        enc = self.tokenizer(text, truncation=True, max_length=self.max_length, return_tensors="pt")
-        model = self._move(self.acd_model)
-        with torch.no_grad():
-            logits = model(**{k: v.to(self.device) for k, v in enc.items()}).logits[0]
-        probs = torch.sigmoid(logits).tolist()
+        chunks = [text[s:e] for s, e in windows]
+        logits = torch.cat(
+            [
+                self._logits(self.acd_model, self._encode([chunks[i] for i in group]))
+                for group in self._batches(len(chunks))
+            ]
+        )
+        probs = torch.sigmoid(logits).max(dim=0).values.tolist()
         return list(zip(self.categories, probs, strict=True))
 
-    def _top_category(self, text: str) -> str | None:
-        scores = self._category_scores(text)
-        if not scores:
-            return None
-        cat, prob = max(scores, key=lambda cp: cp[1])
-        return cat if prob >= 0.5 else None
-
     def predict(self, text: str) -> list[AspectPrediction]:
-        cleaned = clean_text(text)
-        if not cleaned:
+        view = clean_text_aligned(text)
+        if not view.text:
             return []
-        category = self._top_category(cleaned)
+        windows = self._windows(view.text)
+        spans = self._extract_spans(view.text, windows)
+        labels = self._classify(view.text, windows, [(view.text[s:e], (s, e)) for s, e in spans])
         predictions: list[AspectPrediction] = []
-        for start, end, surface in self._extract_spans(cleaned):
-            sentiment, confidence = self._classify_sentiment(cleaned, surface, (start, end))
+        for (start, end), (sentiment, confidence) in zip(spans, labels, strict=True):
+            raw_start, raw_end = view.to_raw(start, end)
             predictions.append(
                 AspectPrediction(
-                    aspect=surface,
+                    aspect=view.raw[raw_start:raw_end],
                     sentiment=sentiment,
                     confidence=confidence,
-                    start=start,
-                    end=end,
-                    category=category,
+                    start=raw_start,
+                    end=raw_end,
                 )
             )
         return predictions
@@ -307,70 +410,83 @@ class TransformerABSA:
     def predict_batch(self, texts: list[str]) -> list[list[AspectPrediction]]:
         return [self.predict(t) for t in texts]
 
+    def category_scores(self, text: str) -> list[tuple[str, float]]:
+        """Probability for every category, before thresholding."""
+        cleaned = clean_text(text)
+        return self._category_scores(cleaned, self._windows(cleaned)) if cleaned else []
+
+    def predict_categories(self, text: str) -> list[tuple[str, float]]:
+        scores = self.category_scores(text)
+        return sorted(((c, p) for c, p in scores if p >= self.acd_threshold), key=lambda cp: -cp[1])
+
     # --- EvaluablePipeline interface (uniform scoring across tracks) ---
+    # Spans in and out are offsets into the raw ``text``, like gold annotations.
     @property
     def category_labels(self) -> list[str]:
         return list(self.categories)
 
     def extract_spans(self, text: str) -> list[tuple[int, int, str]]:
-        cleaned = clean_text(text)
-        return self._extract_spans(cleaned) if cleaned else []
+        view = clean_text_aligned(text)
+        if not view.text:
+            return []
+        spans = self._extract_spans(view.text, self._windows(view.text))
+        raw_spans = [view.to_raw(s, e) for s, e in spans]
+        return [(s, e, view.raw[s:e]) for s, e in raw_spans]
 
     def classify_aspect(
         self, text: str, term: str, span: tuple[int, int]
     ) -> tuple[Polarity, float]:
-        return self._classify_sentiment(clean_text(text), term, span)
-
-    def predict_categories(self, text: str) -> list[tuple[str, float]]:
-        return [(c, p) for c, p in self._category_scores(clean_text(text)) if p >= 0.5]
+        view = clean_text_aligned(text)
+        clean_span = view.to_clean(*span)
+        surface = view.text[clean_span[0] : clean_span[1]] if clean_span else term
+        windows = self._windows(view.text)
+        return self._classify(view.text, windows, [(surface, clean_span or (-1, -1))])[0]
 
     @classmethod
     def load(cls, directory: str | Path, device: str | None = None) -> TransformerABSA:
         import torch
-        from transformers import AutoTokenizer
+        from transformers import (
+            AutoModelForSequenceClassification,
+            AutoModelForTokenClassification,
+            AutoTokenizer,
+        )
 
         directory = Path(directory)
         meta = json.loads((directory / "meta.json").read_text(encoding="utf-8"))
         quantized = bool(meta.get("quantized", False))
+        if quantized and (directory / "ate.pt").exists():
+            raise RuntimeError(
+                f"{directory} is an old pickled int8 artifact; re-create it with `make export`."
+            )
         if device is None:
             # int8 dynamic-quantized models are CPU-only.
             device = "cpu" if quantized else ("cuda" if torch.cuda.is_available() else "cpu")
-        tokenizer = AutoTokenizer.from_pretrained(directory / "tokenizer")
 
-        if quantized:
+        models: dict[str, Any] = {}
+        for task, head in TASK_HEADS.items():
+            task_dir = directory / task
+            if not task_dir.exists():
+                models[task] = None
+            elif quantized:
+                models[task] = load_int8(task_dir, head)
+            elif head == "token":
+                models[task] = AutoModelForTokenClassification.from_pretrained(task_dir)
+            else:
+                models[task] = AutoModelForSequenceClassification.from_pretrained(task_dir)
+        if models["ate"] is None or models["asc"] is None:
+            raise FileNotFoundError(f"{directory} is missing the ate/ or asc/ model")
 
-            def _load_pt(name: str) -> Any:
-                path = directory / f"{name}.pt"
-                if not path.exists():
-                    return None
-                return torch.load(path, map_location="cpu", weights_only=False)
-
-            ate_model = _load_pt("ate")
-            asc_model = _load_pt("asc")
-            acd_model = _load_pt("acd")
-        else:
-            from transformers import (
-                AutoModelForSequenceClassification,
-                AutoModelForTokenClassification,
-            )
-
-            ate_model = AutoModelForTokenClassification.from_pretrained(directory / "ate")
-            asc_model = AutoModelForSequenceClassification.from_pretrained(directory / "asc")
-            acd_dir = directory / "acd"
-            acd_model = (
-                AutoModelForSequenceClassification.from_pretrained(acd_dir)
-                if acd_dir.exists()
-                else None
-            )
         return cls(
-            tokenizer=tokenizer,
-            ate_model=ate_model,
-            asc_model=asc_model,
-            acd_model=acd_model,
+            tokenizer=AutoTokenizer.from_pretrained(directory / "tokenizer"),
+            ate_model=models["ate"],
+            asc_model=models["asc"],
+            acd_model=models["acd"],
             categories=meta.get("categories", []),
             max_length=int(meta.get("max_length", 128)),
             markers=tuple(meta.get("markers", ["[ASP]", "[/ASP]"])),
             device=device,
+            quantized=quantized,
+            acd_threshold=float(meta.get("acd_threshold", 0.5)),
         )
 
 
@@ -384,7 +500,11 @@ __all__ = [
     "build_asc_dataset",
     "build_ate_dataset",
     "category_vocab",
+    "decode_bio",
+    "load_int8",
     "mark_aspect",
+    "quantize_int8",
     "resolve_tokenizer",
+    "save_int8",
     "trim_span",
 ]

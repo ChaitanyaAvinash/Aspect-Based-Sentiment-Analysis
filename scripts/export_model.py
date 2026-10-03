@@ -1,4 +1,8 @@
-"""Export an int8-quantized CPU artifact from the trained transformer (optional --onnx)."""
+"""Export an int8-quantized CPU artifact from the trained transformer (optional --onnx).
+
+Weights-only format: each task dir holds config.json + a quantized state_dict, so the
+artifact never unpickles code and loads with ``torch.load(weights_only=True)``.
+"""
 
 from __future__ import annotations
 
@@ -16,13 +20,6 @@ log = get_logger("export")
 
 def _dir_size_mb(path: Path) -> float:
     return sum(f.stat().st_size for f in path.rglob("*") if f.is_file()) / 1e6
-
-
-def _quantize(model: Any) -> Any:
-    import torch
-
-    model.eval()
-    return torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
 
 
 def _export_onnx(pipe: Any, output: Path) -> bool:
@@ -62,12 +59,40 @@ def _export_onnx(pipe: Any, output: Path) -> bool:
         return False
 
 
+def _calibrate_acd(artifact: Path, val_path: Path) -> float | None:
+    """Re-tune the ACD cutoff on validation data: int8 shrinks category probabilities,
+    so the fp32 cutoff of 0.5 costs recall (test micro-F1 0.822 vs 0.858 at 0.30)."""
+    from absa.data.io import read_jsonl
+    from absa.models.transformer import TransformerABSA
+    from absa.training.evaluation import tune_threshold
+
+    if not val_path.exists():
+        log.warning("acd_threshold_untuned", reason=f"{val_path} not found; keeping 0.5")
+        return None
+    pipe = TransformerABSA.load(artifact, device="cpu")
+    if pipe.acd_model is None:
+        return None
+    scored = [
+        ({c.category for c in ex.aspect_categories}, pipe.category_scores(ex.text))
+        for ex in read_jsonl(val_path)
+        if ex.aspect_categories
+    ]
+    best, curve = tune_threshold(scored, pipe.category_labels)
+    log.info("acd_threshold", best=best, val_micro_f1=round(curve[best], 3), at_half=curve[0.5])
+    return best
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Export a CPU (int8) deployment artifact.")
     parser.add_argument("--source", default=None, help="fp32 transformer artifact dir")
     parser.add_argument("--output", default=None, help="output artifact dir")
     parser.add_argument("--version", default=None)
     parser.add_argument("--onnx", action="store_true", help="also emit ONNX graphs")
+    parser.add_argument(
+        "--val",
+        default=str(PROJECT_ROOT / "data" / "processed" / "val.jsonl"),
+        help="validation split used to tune the ACD threshold",
+    )
     args = parser.parse_args()
 
     configure_logging()
@@ -96,9 +121,7 @@ def main() -> None:
             note="deberta-v3 loses accuracy under int8; prefer bert-base via `make train-demo`",
         )
 
-    import torch
-
-    from absa.models.transformer import TransformerABSA
+    from absa.models.transformer import TransformerABSA, save_int8
 
     log.info("loading_fp32", source=str(source))
     pipe = TransformerABSA.load(source, device="cpu")
@@ -110,7 +133,7 @@ def main() -> None:
     for name, model in (("ate", pipe.ate_model), ("asc", pipe.asc_model), ("acd", pipe.acd_model)):
         if model is None:
             continue
-        torch.save(_quantize(model), output / f"{name}.pt")
+        save_int8(model, output / name)
         log.info("quantized", model=name)
 
     pipe.tokenizer.save_pretrained(output / "tokenizer")
@@ -124,6 +147,11 @@ def main() -> None:
     }
     (output / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
+    threshold = _calibrate_acd(output, Path(args.val))
+    if threshold is not None:
+        meta["acd_threshold"] = threshold
+        (output / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+
     onnx_ok = _export_onnx(pipe, output) if args.onnx else False
 
     fp32_mb, int8_mb = _dir_size_mb(source), _dir_size_mb(output)
@@ -133,6 +161,8 @@ def main() -> None:
         f"         size: fp32 {fp32_mb:.0f} MB -> int8 {int8_mb:.0f} MB "
         f"({int8_mb / fp32_mb * 100:.0f}% of fp32)"
     )
+    if threshold is not None:
+        print(f"         ACD threshold: {threshold} (tuned on {Path(args.val).name})")
     if args.onnx:
         print(f"         onnx: {'exported to onnx/' if onnx_ok else 'failed (see logs)'}")
 

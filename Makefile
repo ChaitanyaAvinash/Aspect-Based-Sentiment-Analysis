@@ -8,6 +8,7 @@ PIP := $(PY) -m pip
 
 .DEFAULT_GOAL := help
 .PHONY: help setup setup-gpu prepare-data train train-baseline train-transformer train-demo \
+        train-seeds \
         evaluate serve demo export benchmark test lint format type check clean \
         docker-build docker-up docker-down
 
@@ -18,6 +19,7 @@ help:  ## Show this help
 	@echo "  prepare-data     Download/parse SemEval -> data/processed"
 	@echo "  train            Train baseline + transformer (deberta-v3, best)"
 	@echo "  train-demo       Fine-tune bert-base for the CPU demo (quantized)"
+	@echo "  train-seeds      Train deberta-v3 with SEEDS (default 42 43 44), report mean +- std"
 	@echo "  evaluate         Evaluate + write reports/figures"
 	@echo "  serve            Run FastAPI service on :8000"
 	@echo "  demo             Run Streamlit demo (CPU, offline)"
@@ -48,6 +50,13 @@ train-baseline:
 
 train-transformer:
 	$(PY) scripts/train.py --track transformer
+
+SEEDS ?= 42 43 44
+train-seeds:  ## Seed variance for Track B -> reports/seed_variance.json
+	$(foreach s,$(SEEDS),$(PY) scripts/train.py --track transformer --seed $(s) --no-mlflow \
+		--output-dir artifacts/seeds/transformer-seed$(s) \
+		--metrics-out reports/seeds/transformer_seed$(s).json &&) true
+	$(PY) scripts/aggregate_seeds.py
 
 train-demo:  ## Fine-tune bert-base for the CPU demo (quantization-friendly)
 	$(PY) scripts/train.py --track transformer --encoder bert-base-uncased --epochs 3 \

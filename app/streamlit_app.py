@@ -80,6 +80,12 @@ def main() -> None:
             f"{highlight_html(text, predictions)}</div>",
             unsafe_allow_html=True,
         )
+        categories = service.predict_categories(text)
+        if categories:
+            st.caption(
+                "Categories (restaurant domain): "
+                + ", ".join(f"{c} {p:.0%}" for c, p in categories)
+            )
         if predictions:
             frame = pd.DataFrame([p.to_dict() for p in predictions])
             st.dataframe(frame, use_container_width=True, hide_index=True)

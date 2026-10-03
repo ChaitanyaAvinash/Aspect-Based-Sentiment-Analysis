@@ -29,6 +29,7 @@ dependencies = [
 classical = [
     "scikit-learn==1.5.2",
     "sklearn-crfsuite==0.5.0",
+    "joblib==1.4.2",  # baseline save/load (used directly, not only via sklearn)
     "spacy==3.8.2",
     "seqeval==1.2.2",
 ]

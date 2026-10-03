@@ -87,9 +87,41 @@ def classification_metrics(
     }
 
 
+SEED_METRICS: tuple[tuple[str, str], ...] = (
+    ("ate", "f1"),
+    ("acd", "micro_f1"),
+    ("acd", "macro_f1"),
+    ("asc", "accuracy"),
+    ("asc", "macro_f1"),
+)
+
+
+def summarize_runs(runs: Sequence[dict[str, dict[str, object]]]) -> dict[str, dict[str, float]]:
+    """Mean / sample std / min / max of each headline metric across seeded runs."""
+    import statistics
+
+    summary: dict[str, dict[str, float]] = {}
+    for task, key in SEED_METRICS:
+        values = [
+            float(v) for run in runs if isinstance(v := run.get(task, {}).get(key), int | float)
+        ]
+        if not values:
+            continue
+        summary[f"{task}.{key}"] = {
+            "mean": statistics.mean(values),
+            "std": statistics.stdev(values) if len(values) > 1 else 0.0,
+            "min": min(values),
+            "max": max(values),
+            "n": len(values),
+        }
+    return summary
+
+
 __all__ = [
     "ASC_LABELS",
+    "SEED_METRICS",
     "classification_metrics",
     "multilabel_prf",
     "span_prf",
+    "summarize_runs",
 ]

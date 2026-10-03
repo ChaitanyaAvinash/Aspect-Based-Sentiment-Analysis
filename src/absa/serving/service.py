@@ -81,5 +81,8 @@ class ModelService:
     def predict_batch(self, texts: list[str]) -> list[list[AspectPrediction]]:
         return self.model.predict_batch(texts)
 
+    def predict_categories(self, text: str) -> list[tuple[str, float]]:
+        return self.model.predict_categories(text)
+
 
 __all__ = ["ModelService"]

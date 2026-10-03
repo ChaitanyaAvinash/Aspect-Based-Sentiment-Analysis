@@ -22,7 +22,6 @@ def test_version_present() -> None:
         "absa.data",
         "absa.models",
         "absa.training",
-        "absa.inference",
         "absa.serving",
     ],
 )

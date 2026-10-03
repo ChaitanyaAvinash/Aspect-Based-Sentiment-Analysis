@@ -10,14 +10,13 @@ from absa.data.schema import Polarity
 
 @dataclass
 class AspectPrediction:
-    """One predicted aspect with its category, sentiment, confidence, and span."""
+    """One predicted aspect: sentiment, confidence, and [start, end) span in the input text."""
 
     aspect: str
     sentiment: Polarity
     confidence: float
     start: int = -1
     end: int = -1
-    category: str | None = None
 
     @property
     def span(self) -> tuple[int, int]:
@@ -26,7 +25,6 @@ class AspectPrediction:
     def to_dict(self) -> dict[str, object]:
         return {
             "aspect": self.aspect,
-            "category": self.category,
             "sentiment": self.sentiment,
             "confidence": round(float(self.confidence), 4),
             "span": [self.start, self.end],
@@ -35,11 +33,17 @@ class AspectPrediction:
 
 @runtime_checkable
 class ABSAPipeline(Protocol):
-    """End-to-end interface: text in, structured aspect predictions out."""
+    """End-to-end interface: text in, aspects (+ sentence-level categories) out.
+
+    Categories are sentence-level: SemEval-2014 does not link aspect terms to
+    categories, so a per-aspect category would be a guess.
+    """
 
     def predict(self, text: str) -> list[AspectPrediction]: ...
 
     def predict_batch(self, texts: list[str]) -> list[list[AspectPrediction]]: ...
+
+    def predict_categories(self, text: str) -> list[tuple[str, float]]: ...
 
 
 @runtime_checkable

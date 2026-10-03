@@ -8,10 +8,9 @@ from absa.models.base import AspectPrediction
 
 
 class AspectOut(BaseModel):
-    """One predicted aspect."""
+    """One predicted aspect; ``span`` is [start, end) into the request text."""
 
     aspect: str
-    category: str | None = None
     sentiment: str
     confidence: float = Field(ge=0.0, le=1.0)
     span: tuple[int, int]
@@ -20,11 +19,17 @@ class AspectOut(BaseModel):
     def from_prediction(cls, prediction: AspectPrediction) -> AspectOut:
         return cls(
             aspect=prediction.aspect,
-            category=prediction.category,
             sentiment=prediction.sentiment,
             confidence=round(float(prediction.confidence), 4),
             span=(prediction.start, prediction.end),
         )
+
+
+class CategoryOut(BaseModel):
+    """A sentence-level aspect category (SemEval-2014 restaurant categories)."""
+
+    category: str
+    confidence: float = Field(ge=0.0, le=1.0)
 
 
 class PredictRequest(BaseModel):
@@ -43,6 +48,7 @@ class PredictResponse(BaseModel):
     track: str
     count: int
     aspects: list[AspectOut]
+    categories: list[CategoryOut]
 
 
 class BatchPredictResponse(BaseModel):
@@ -60,6 +66,7 @@ __all__ = [
     "AspectOut",
     "BatchPredictRequest",
     "BatchPredictResponse",
+    "CategoryOut",
     "HealthResponse",
     "PredictRequest",
     "PredictResponse",

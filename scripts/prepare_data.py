@@ -9,6 +9,7 @@ from typing import Any
 
 from absa.config import PROJECT_ROOT, get_settings, load_yaml_config
 from absa.data.io import load_sample, write_jsonl
+from absa.data.preprocessing import find_nearest
 from absa.data.schema import ABSAExample, AspectCategory, AspectTerm
 from absa.data.semeval import parse_semeval_xml
 from absa.data.splits import SplitRatios, make_splits
@@ -96,7 +97,9 @@ def _structured_to_examples(ds: Any, domain: str, drop_conflict: bool) -> list[A
             start = int(froms[j]) if j < len(froms) else -1
             end = int(tos[j]) if j < len(tos) else -1
             if not (0 <= start < end <= len(text) and text[start:end] == term):
-                idx = text.find(term)
+                # Offsets drift (e.g. stripped whitespace): take the occurrence nearest
+                # the recorded one, not the first, so repeated terms keep their label.
+                idx = find_nearest(text, term, start)
                 start, end = (idx, idx + len(term)) if idx >= 0 else (-1, -1)
             aspect_terms.append(AspectTerm(term=term, polarity=pol, start=start, end=end))  # type: ignore[arg-type]
 
@@ -181,8 +184,9 @@ def _dataset_to_examples(ds: Any, domain: str) -> list[ABSAExample]:
 
 
 def _is_test_split(split_name: str) -> bool:
-    low = split_name.lower()
-    return "test" in low or "valid" in low or low == "dev"
+    # Only real test splits are held out; validation/dev splits join the train pool
+    # (our own val split is re-derived from it).
+    return "test" in split_name.lower()
 
 
 def _load_from_hf(

@@ -3,13 +3,20 @@
 Extract **aspects** from review text and predict **sentiment per aspect**
 (positive / negative / neutral), covering three sub-tasks — **ATE** (aspect term
 extraction), **ACD** (aspect category detection), and **ASC** (aspect sentiment
-classification) — behind one call:
+classification) — behind one call (real output of the deployed int8 model):
 
 ```python
-predict("The battery lasts forever but the screen is dim")
-# -> [{"aspect": "battery", "category": "BATTERY",  "sentiment": "positive", "confidence": 0.97, "span": [4, 11]},
-#     {"aspect": "screen",  "category": "DISPLAY",   "sentiment": "negative", "confidence": 0.93, "span": [37, 43]}]
+text = "The pizza was delicious but the service was painfully slow."
+predict(text)
+# -> [{"aspect": "pizza",   "sentiment": "positive", "confidence": 0.68, "span": [4, 9]},
+#     {"aspect": "service", "sentiment": "negative", "confidence": 0.63, "span": [32, 39]}]
+predict_categories(text)
+# -> [("service", 0.80), ("food", 0.51)]
 ```
+
+`span` always indexes the text you passed in (even with extra whitespace or HTML).
+Categories are sentence-level and restaurant-only: SemEval-2014 labels categories
+for restaurants and does not link them to individual aspect terms.
 
 Two comparable tracks are provided so results can be compared head-to-head:
 
@@ -81,7 +88,9 @@ Without GNU Make on Windows, replace `make <t>` with `./make.ps1 <t>`.
 > the reported model, but it degrades badly under dynamic int8 quantization (its
 > disentangled-attention layers are quant-sensitive). The **demo** therefore ships a
 > quantized **`bert-base-uncased`** model, which quantizes cleanly and runs in
-> **~46 ms/inference on CPU** (545 MB int8 artifact) — well under the 1-second target.
+> **~36 ms/inference** (p95 43 ms, 545 MB int8 artifact) on the desktop's Ryzen 7 7700X
+> CPU — well under the 1-second target. Run `make benchmark` on the demo laptop for its
+> own number; it records the CPU in `reports/benchmark.json`.
 
 ## Deploying to the demo laptop
 
@@ -89,12 +98,17 @@ The laptop runs **inference only, offline, no GPU, no Docker**:
 
 1. On the desktop: `make train-demo && make export`. This writes the
    **int8-quantized** deployment artifact to `artifacts/absa-transformer-int8/`
-   (~545 MB, CPU-only, self-contained).
+   (~545 MB, CPU-only, self-contained). It stores weights only (config + quantized
+   `state_dict` per task, loaded with `torch.load(weights_only=True)`), so no code is
+   unpickled on the laptop. Export also tunes the int8 model's category threshold on
+   the validation split. Artifacts from older versions (`ate.pt`, …) must be
+   re-exported.
 2. Copy the repo **and the `artifacts/absa-transformer-int8/` folder** to the laptop
    (artifacts are gitignored because they're large — transfer them manually).
 3. On the laptop: `make setup` (installs the **CPU-only** stack), then `make demo`.
 4. The demo preloads the artifact and runs a warmup inference at startup, so the
-   first live prediction returns in **~46 ms** — no downloads, no GPU, no Docker.
+   first live prediction is fast — no downloads, no GPU, no Docker. Run
+   `make benchmark` once on the laptop to record its latency.
 
 ## Development
 
@@ -104,6 +118,8 @@ make lint      # ruff + black --check
 make type      # mypy
 make format    # auto-fix + format
 make check     # lint + type + test
+make benchmark    # CPU latency + size -> reports/benchmark.json (records the CPU)
+make train-seeds  # deberta-v3 x 3 seeds -> mean/std in reports/seed_variance.json
 ```
 
 Config: environment/secrets via `.env` (see `.env.example`, prefix `ABSA_`);
@@ -117,17 +133,24 @@ both scored through the same char-exact evaluation code path
 
 | Task | Metric | Track A — baseline | Track B — deberta-v3 |
 |---|---|---|---|
-| ATE | span-F1 | 0.730 | **0.864** |
+| ATE | span-F1 | 0.732 | **0.867** |
 | ACD | micro-F1 | 0.801 | **0.906** |
-| ASC | macro-F1 | 0.599 | **0.803** |
-| ASC | accuracy | 0.693 | **0.859** |
+| ASC | macro-F1 | 0.599 | **0.804** |
+| ASC | accuracy | 0.693 | **0.860** |
 
 Neutral is the hardest sentiment class for both tracks (the classic ABSA
 pattern); categories exist only for restaurants in SemEval-2014.
+`reports/comparison.md` also breaks every metric down **per domain**
+(restaurants / laptops), as SemEval results are usually reported. Aspects
+labelled `conflict` are dropped from the gold data, so ATE numbers are not
+directly comparable to papers that keep them. All numbers are a single seed (42);
+`make train-seeds` measures seed variance.
 
 **Deployed CPU model** (int8-quantized `bert-base-uncased`, what the demo runs):
-ATE span-F1 **0.803**, ACD micro-F1 **0.821**, ASC macro-F1 **0.723** — between the
-baseline and deberta-v3, at ~46 ms/inference on CPU (`reports/deploy_int8_metrics.json`).
+ATE span-F1 **0.807**, ACD micro-F1 **0.858**, ASC macro-F1 **0.724** — between the
+baseline and deberta-v3, at ~36 ms/inference on the desktop CPU
+(`reports/deploy_int8_metrics.json`, `reports/benchmark.json`; both regenerated by
+`make evaluate` / `make benchmark`).
 
 ## Roadmap
 
@@ -137,7 +160,7 @@ baseline and deberta-v3, at ~46 ms/inference on CPU (`reports/deploy_int8_metric
 - [x] **P3** Track B transformer — `deberta-v3-base` fine-tuned (ATE/ACD/ASC), bf16 on RTX 4070, MLflow.
 - [x] **P4** Evaluation — unified Track A vs B scoring, confusion matrices, figures in `reports/`.
 - [x] **P5** Serving — FastAPI `/predict` (+ batch) & `/health`, pydantic schemas, warmup, `/docs`.
-- [x] **P5.5** CPU export — int8-quantized bert artifact (`make export`) + `make benchmark` (46 ms/inference).
+- [x] **P5.5** CPU export — int8-quantized bert artifact (`make export`) + `make benchmark` (~36 ms/inference on the 7700X).
 - [x] **P6** Demo — Streamlit UI (offline, cached examples, color-coded aspects), loads the int8 artifact.
 - [x] **P7** Docker & CI — `docker/` (Dockerfile + compose, API + demo), GitHub Actions (lint/type/test).
 - [x] **P8** Docs & paper — model card, dataset card, IEEE paper skeleton, architecture diagram.

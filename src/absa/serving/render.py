@@ -28,7 +28,7 @@ def highlight_html(text: str, aspects: list[AspectPrediction]) -> str:
         parts.append(html.escape(text[cursor : a.start]))
         color = SENTIMENT_COLORS.get(a.sentiment, "#888888")
         segment = html.escape(text[a.start : a.end])
-        tip = f"{a.sentiment} {a.confidence:.0%}" + (f" - {a.category}" if a.category else "")
+        tip = f"{a.sentiment} {a.confidence:.0%}"
         parts.append(
             f'<span style="background:{color}26;border-bottom:3px solid {color};'
             f'border-radius:4px;padding:0 3px" title="{tip}">{segment}</span>'

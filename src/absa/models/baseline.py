@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from absa.data.preprocessing import clean_text
+from absa.data.preprocessing import clean_text, clean_text_aligned
 from absa.data.schema import ABSAExample, Polarity
 from absa.models.base import AspectPrediction
 
@@ -187,14 +187,6 @@ class BaselineACD:
         ]
         return sorted(results, key=lambda cp: -cp[1])
 
-    def top_category(self, text: str) -> str | None:
-        if not self.is_fitted:
-            return None
-        x = self.vectorizer.transform([text])
-        proba = self.clf.predict_proba(x)[0]
-        idx = int(proba.argmax())
-        return str(self.mlb.classes_[idx]) if proba[idx] > 0 else None
-
 
 class BaselineASC:
     """Aspect Sentiment Classification via TF-IDF + linear classifier."""
@@ -297,21 +289,20 @@ class BaselineABSA:
         return self
 
     def predict(self, text: str) -> list[AspectPrediction]:
-        cleaned = clean_text(text)
-        if not cleaned:
+        view = clean_text_aligned(text)
+        if not view.text:
             return []
-        category = self.acd.top_category(cleaned)
         predictions: list[AspectPrediction] = []
-        for start, end, surface in self.ate.predict_spans(cleaned):
-            sentiment, confidence = self.asc.predict(cleaned, surface)
+        for start, end, surface in self.ate.predict_spans(view.text):
+            sentiment, confidence = self.asc.predict(view.text, surface)
+            raw_start, raw_end = view.to_raw(start, end)
             predictions.append(
                 AspectPrediction(
-                    aspect=surface,
+                    aspect=view.raw[raw_start:raw_end],
                     sentiment=sentiment,
                     confidence=confidence,
-                    start=start,
-                    end=end,
-                    category=category,
+                    start=raw_start,
+                    end=raw_end,
                 )
             )
         return predictions
@@ -319,22 +310,29 @@ class BaselineABSA:
     def predict_batch(self, texts: list[str]) -> list[list[AspectPrediction]]:
         return [self.predict(t) for t in texts]
 
+    def predict_categories(self, text: str) -> list[tuple[str, float]]:
+        return self.acd.predict(clean_text(text))
+
     # --- EvaluablePipeline interface (uniform scoring across tracks) ---
+    # Spans in and out are offsets into the raw ``text``, like gold annotations.
     @property
     def category_labels(self) -> list[str]:
         return [str(c) for c in self.acd.mlb.classes_] if self.acd.is_fitted else []
 
     def extract_spans(self, text: str) -> list[tuple[int, int, str]]:
-        cleaned = clean_text(text)
-        return self.ate.predict_spans(cleaned) if cleaned else []
+        view = clean_text_aligned(text)
+        if not view.text:
+            return []
+        raw_spans = [view.to_raw(s, e) for s, e, _ in self.ate.predict_spans(view.text)]
+        return [(s, e, view.raw[s:e]) for s, e in raw_spans]
 
     def classify_aspect(
         self, text: str, term: str, span: tuple[int, int]
     ) -> tuple[Polarity, float]:
-        return self.asc.predict(clean_text(text), term)
-
-    def predict_categories(self, text: str) -> list[tuple[str, float]]:
-        return self.acd.predict(clean_text(text))
+        view = clean_text_aligned(text)
+        clean_span = view.to_clean(*span)
+        surface = view.text[clean_span[0] : clean_span[1]] if clean_span else term
+        return self.asc.predict(view.text, surface)
 
     def save(self, directory: str | Path) -> Path:
         import joblib

@@ -12,7 +12,10 @@ predict sentiment per aspect. Three sub-tasks:
 - **ATE** — Aspect Term Extraction (spans, e.g. "battery", "service").
 - **ACD** — Aspect Category Detection (e.g. `food`, `service`).
 - **ASC** — Aspect Sentiment Classification (positive / negative / neutral per aspect).
-- End-to-end: `predict(text) -> [{aspect, category, sentiment, confidence, span}]`.
+- End-to-end: `predict(text) -> [{aspect, sentiment, confidence, span}]`, with `span`
+  indexing the caller's raw text, plus sentence-level `predict_categories(text)`.
+  Categories are not per aspect: SemEval-2014 does not link terms to categories,
+  and only restaurants have them.
 
 Two comparable tracks:
 
@@ -44,6 +47,7 @@ make setup-gpu      # CUDA venv + install (training desktop)
 make prepare-data   # download/parse SemEval -> data/processed
 make train          # baseline + transformer (deberta-v3)
 make train-demo     # bert-base for the quantized CPU demo
+make train-seeds    # deberta-v3 x 3 seeds -> mean/std in reports/seed_variance.json
 make evaluate       # metrics, confusion matrices, figures -> reports/
 make export         # int8 CPU artifact -> artifacts/
 make benchmark      # CPU latency + artifact size
@@ -82,10 +86,15 @@ artifacts/          trained/exported models (gitignored)
 2. `train.py --track {baseline,transformer}` fits the models and writes metrics.
    Track B fine-tunes ATE (token classification, BIO), ACD (multi-label), and ASC
    (aspect marked with `[ASP] … [/ASP]`), logging to MLflow.
-3. `evaluate.py` scores both tracks through the same code path and writes
-   `reports/comparison.{md,json}` plus figures.
+3. `evaluate.py` scores every track (baseline, deberta, deployed int8) through the
+   same code path, overall and per domain, and writes `reports/comparison.{md,json}`,
+   `reports/deploy_int8_metrics.json`, and figures.
 4. `export_model.py` int8-quantizes a bert-base model into a self-contained CPU
-   artifact; `benchmark.py` reports latency and size.
+   artifact: per task a `config.json` + quantized `state_dict`, loaded with
+   `torch.load(weights_only=True)` (no pickled code). int8 shrinks ACD
+   probabilities, so export re-tunes the ACD threshold on the validation split and
+   stores it in `meta.json`. `benchmark.py` reports latency, size, and the CPU it
+   ran on.
 5. `serving/` (FastAPI) and `app/` (Streamlit) load the artifact via
    `ModelService`, preload + warm up, and serve predictions offline.
 
@@ -103,3 +112,10 @@ artifacts/          trained/exported models (gitignored)
   runs in CI) vs `dl` (torch/transformers). `transformer.py` / `hf_trainer.py` are
   omitted from the coverage gate since torch isn't installed in CI.
 - Dependencies are pinned; two requirement sets for the CPU/GPU split.
+- **Spans** are always offsets into the caller's raw text. Pipelines clean input with
+  `clean_text_aligned` and map predicted spans back through its offset table, so the
+  demo/API highlight the right characters and evaluation matches gold offsets.
+- **Long input** is split into sentence-aligned windows that fit `max_length` instead
+  of being truncated (single SemEval sentences always fit in one window).
+- **int8 inference** runs one sequence per forward pass: dynamic quantization picks
+  activation scales per input tensor, so batching would couple predictions.

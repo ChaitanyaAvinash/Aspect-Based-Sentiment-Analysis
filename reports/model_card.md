@@ -8,9 +8,9 @@ terms**, detects **aspect categories**, and predicts **per-aspect sentiment**
 
 | Model | Role | ATE span-F1 | ACD micro-F1 | ASC macro-F1 | ASC acc |
 |---|---|---|---|---|---|
-| **Track A** — CRF + TF-IDF/LogReg | classical baseline | 0.730 | 0.801 | 0.599 | 0.693 |
-| **Track B** — `deberta-v3-base` (fp32) | **reported best** | **0.864** | **0.906** | **0.803** | **0.859** |
-| **Deployed** — `bert-base-uncased` int8 | CPU demo/serving | 0.803 | 0.821 | 0.723 | 0.806 |
+| **Track A** — CRF + TF-IDF/LogReg | classical baseline | 0.732 | 0.801 | 0.599 | 0.693 |
+| **Track B** — `deberta-v3-base` (fp32) | **reported best** | **0.867** | **0.906** | **0.804** | **0.860** |
+| **Deployed** — `bert-base-uncased` int8 | CPU demo/serving | 0.807 | 0.858 | 0.724 | 0.806 |
 
 All figures are on the official **SemEval-2014 Task 4** test split (1,600
 sentences), scored through one char-exact evaluation path (`reports/comparison.md`).
@@ -46,18 +46,25 @@ matrices and per-class breakdowns are in `reports/figures/` and
 
 ## Limitations & failure modes
 
-- **Neutral is hardest.** ASC neutral F1 ≈ 0.43 (baseline) / ~0.60 (transformer);
+- **Neutral is hardest.** ASC neutral F1 ≈ 0.43 (baseline) / 0.66 (deberta-v3) /
+  0.53 (deployed int8);
   neutral is the minority class and is often confused with positive/negative.
-- **Category is restaurant-only.** ACD was trained on restaurant categories; on
-  laptop text it emits meaningless categories (no laptop category labels exist in
-  SemEval-2014). Treat `category` as informative only for restaurant-like text.
+- **Categories are sentence-level and restaurant-only.** SemEval-2014 does not link
+  aspect terms to categories, so categories are returned per sentence
+  (`predict_categories` / the API's `categories` field), not per aspect. ACD was
+  trained on restaurant categories only; on laptop text its output is not
+  meaningful.
 - **deberta-v3 + int8 is incompatible.** Dynamic int8 quantization severely
   degrades deberta-v3 (its disentangled-attention Linear layers are
   quant-sensitive), so deployment uses a quantized `bert-base-uncased` instead —
-  a small accuracy trade-off for a 46 ms/inference CPU model.
-- **Domain / language shift.** Accuracy drops on out-of-domain, non-English, very
-  long, or code-mixed input; such inputs are handled *gracefully* (empty result,
-  truncation) but not accurately.
+  a small accuracy trade-off for a ~36 ms/inference CPU model (desktop Ryzen 7 7700X;
+  measure the laptop with `make benchmark`). Its ACD threshold is re-tuned on the
+  validation split (0.30), because int8 lowers the category probabilities.
+- **Domain / language shift.** Accuracy drops on out-of-domain, non-English, or
+  code-mixed input; such inputs are handled *gracefully* but not accurately. The
+  models were trained on single sentences: long reviews are split into
+  sentence-aligned windows (not truncated), but each window is scored without
+  wider context.
 - **Span boundaries.** Extraction can occasionally over/under-shoot multi-word or
   punctuation-adjacent spans.
 
@@ -77,7 +84,8 @@ matrices and per-class breakdowns are in `reports/figures/` and
 
 - Training: a single RTX 4070 (bf16), ~2 min/sub-task for deberta-v3 (~6–7 min
   total) — small footprint. Baseline trains on CPU in seconds.
-- Inference: CPU-only, int8, ~46 ms/inference, 545 MB artifact — cheap to serve.
+- Inference: CPU-only, int8, ~36 ms/inference on a Ryzen 7 7700X, 545 MB artifact —
+  cheap to serve.
 
 ## Sustainable Development Goals (SDGs)
 
@@ -96,7 +104,9 @@ from absa.serving.service import ModelService
 from absa.config import get_settings
 
 svc = ModelService.load(get_settings())      # loads the int8 CPU artifact
-print(svc.predict("The battery lasts all day but the screen is dim."))
+text = "The pizza was delicious but the service was painfully slow."
+print(svc.predict(text))             # aspects: sentiment, confidence, span into `text`
+print(svc.predict_categories(text))  # sentence-level categories (restaurant domain)
 ```
 
 Or via the API (`make serve`, `POST /predict`) / the demo (`make demo`).

@@ -13,6 +13,7 @@ from absa.serving.schemas import (
     AspectOut,
     BatchPredictRequest,
     BatchPredictResponse,
+    CategoryOut,
     HealthResponse,
     PredictRequest,
     PredictResponse,
@@ -48,7 +49,16 @@ def create_app(service: ModelService | None = None) -> FastAPI:
 
     def _to_response(text: str, svc: ModelService) -> PredictResponse:
         aspects = [AspectOut.from_prediction(p) for p in svc.predict(text)]
-        return PredictResponse(text=text, track=svc.track, count=len(aspects), aspects=aspects)
+        categories = [
+            CategoryOut(category=c, confidence=round(p, 4)) for c, p in svc.predict_categories(text)
+        ]
+        return PredictResponse(
+            text=text,
+            track=svc.track,
+            count=len(aspects),
+            aspects=aspects,
+            categories=categories,
+        )
 
     @app.get("/health", response_model=HealthResponse, tags=["meta"])
     def health(svc: ModelService = Depends(get_service)) -> HealthResponse:

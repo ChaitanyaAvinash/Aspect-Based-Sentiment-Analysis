@@ -19,11 +19,11 @@ sub-tasks — aspect term extraction (ATE), aspect category detection (ACD), and
 aspect sentiment classification (ASC) — and compare two tracks on the SemEval-2014
 Task 4 benchmark: a classical, CPU-friendly baseline (CRF + TF-IDF/logistic
 regression) and a fine-tuned transformer (`deberta-v3-base`). The transformer
-substantially outperforms the baseline (ATE span-F1 0.73→0.86, ACD micro-F1
+substantially outperforms the baseline (ATE span-F1 0.73→0.87, ACD micro-F1
 0.80→0.91, ASC macro-F1 0.60→0.80). We further study CPU deployment under dynamic
 int8 quantization and report a practical finding: DeBERTa-v3 degrades
 catastrophically under dynamic quantization, whereas a `bert-base-uncased` variant
-quantizes cleanly, yielding a 545 MB, ~46 ms/inference CPU model with only a modest
+quantizes cleanly, yielding a 545 MB, ~36 ms/inference CPU model with only a modest
 accuracy cost. We release the full pipeline, evaluation, serving API, and demo.
 
 ## 1. Introduction
@@ -93,28 +93,35 @@ inference. We compare DeBERTa-v3 and BERT-base under identical quantization.
 
 | Sub-task | Metric | Track A (baseline) | Track B (deberta-v3) |
 |---|---|---|---|
-| ATE | span-F1 | 0.730 | **0.864** |
+| ATE | span-F1 | 0.732 | **0.867** |
 | ACD | micro-F1 | 0.801 | **0.906** |
 | ACD | macro-F1 | 0.770 | **0.882** |
-| ASC | accuracy | 0.693 | **0.859** |
-| ASC | macro-F1 | 0.599 | **0.803** |
+| ASC | accuracy | 0.693 | **0.860** |
+| ASC | macro-F1 | 0.599 | **0.804** |
 
 The transformer improves every sub-task; the largest gain is ASC macro-F1
 (+0.20), driven by better handling of the minority *neutral* class (see confusion
-matrices, `reports/figures/`).
+matrices, `reports/figures/`). Per-domain results are in `reports/comparison.md`.
+Aspects labelled `conflict` are removed from the gold data, so ATE scores are not
+directly comparable to work that keeps them; all results are a single seed.
 
 ### 5.2 CPU deployment and quantization
 
 | Model | ATE F1 | ACD micro-F1 | ASC macro-F1 | Size | Latency (CPU) |
 |---|---|---|---|---|---|
-| deberta-v3 fp32 | 0.864 | 0.906 | 0.803 | ~2.2 GB | ~270 ms |
+| deberta-v3 fp32 | 0.867 | 0.906 | 0.804 | 2.2 GB | ~128 ms |
+| bert-base fp32 | 0.825 | 0.896 | 0.739 | 1.3 GB | ~49 ms |
 | deberta-v3 **int8** | *broken* | *broken* | *broken* | — | — |
-| bert-base **int8** | 0.803 | 0.821 | 0.723 | 545 MB | **~46 ms** |
+| bert-base **int8** | 0.807 | 0.858 | 0.724 | 545 MB | **~36 ms** |
 
 Dynamic int8 quantization renders DeBERTa-v3 unusable (it emits degenerate spans
 and near-random polarity), which we attribute to the quantization sensitivity of
 its disentangled-attention projections. BERT-base quantizes cleanly and meets a
-sub-100 ms CPU latency target with a modest accuracy trade-off.
+sub-100 ms CPU latency target with a modest accuracy trade-off. Quantization also
+shifts the ACD model's calibration: at the fp32 cutoff of 0.5 its micro-F1 falls to
+0.822 (precision 0.94, recall 0.73); re-tuning the cutoff on the validation split
+(0.30) gives 0.858. Latencies are means on a Ryzen 7 7700X desktop CPU
+(`reports/benchmark.json`).
 
 ## 6. Discussion
 

@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from absa.data.io import SAMPLE_PATH, load_sample, read_jsonl, write_jsonl
 from absa.data.preprocessing import (
+    CleanedText,
     Token,
     clean_text,
+    clean_text_aligned,
+    find_nearest,
     looks_english,
     spans_to_bio,
     tokenize,
@@ -26,11 +29,14 @@ __all__ = [
     "ABSAExample",
     "AspectCategory",
     "AspectTerm",
+    "CleanedText",
     "Domain",
     "Polarity",
     "SplitRatios",
     "Token",
     "clean_text",
+    "clean_text_aligned",
+    "find_nearest",
     "label_distribution",
     "load_sample",
     "looks_english",

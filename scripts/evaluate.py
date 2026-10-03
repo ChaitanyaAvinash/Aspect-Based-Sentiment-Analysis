@@ -1,4 +1,7 @@
-"""Evaluate trained tracks on the test split -> reports/comparison.{md,json} + figures."""
+"""Evaluate trained tracks on the test split -> reports/comparison.{md,json} + figures.
+
+Also scores the deployed int8 artifact -> reports/deploy_int8_metrics.json.
+"""
 
 from __future__ import annotations
 
@@ -34,21 +37,38 @@ def _load_test(data_dir: Path, use_sample: bool, seed: int) -> list[ABSAExample]
     return make_splits(load_sample(), seed=seed)["test"]
 
 
-def _load_models() -> dict[str, Any]:
+def _default_sources() -> dict[str, Path]:
+    settings = get_settings()
+    return {
+        "baseline": PROJECT_ROOT / "artifacts" / "baseline",
+        "transformer": PROJECT_ROOT / "artifacts" / "transformer",
+        "int8": settings.resolve(settings.artifact_path),
+    }
+
+
+def _load_models(sources: dict[str, Path]) -> tuple[dict[str, Any], dict[str, str]]:
+    """Load every available artifact; returns (models, display names)."""
     models: dict[str, Any] = {}
-    baseline_dir = PROJECT_ROOT / "artifacts" / "baseline"
-    if (baseline_dir / "baseline.joblib").exists():
-        from absa.models.baseline import BaselineABSA
+    names: dict[str, str] = {}
+    for key, directory in sources.items():
+        if (directory / "baseline.joblib").exists():
+            from absa.models.baseline import BaselineABSA
 
-        models["baseline"] = BaselineABSA.load(baseline_dir)
-        log.info("loaded_baseline")
-    transformer_dir = PROJECT_ROOT / "artifacts" / "transformer"
-    if (transformer_dir / "meta.json").exists():
-        from absa.models.transformer import TransformerABSA
+            models[key] = BaselineABSA.load(directory)
+            names[key] = "Track A — baseline"
+        elif (directory / "meta.json").exists():
+            from absa.models.transformer import TransformerABSA
 
-        models["transformer"] = TransformerABSA.load(transformer_dir)
-        log.info("loaded_transformer")
-    return models
+            meta = json.loads((directory / "meta.json").read_text(encoding="utf-8"))
+            encoder = str(meta.get("encoder", "transformer")).split("/")[-1]
+            models[key] = TransformerABSA.load(directory)
+            names[key] = (
+                f"Deployed — {encoder} int8" if meta.get("quantized") else f"Track B — {encoder}"
+            )
+        else:
+            continue
+        log.info("loaded", track=key, dir=str(directory))
+    return models, names
 
 
 # reports
@@ -56,29 +76,42 @@ def _fmt(value: Any) -> str:
     return f"{value:.3f}" if isinstance(value, int | float) else "n/a"
 
 
-def _comparison_markdown(results: dict[str, dict[str, Any]]) -> str:
-    tracks = [t for t in ("baseline", "transformer") if t in results]
-    names = {"baseline": "Track A — baseline", "transformer": "Track B — deberta-v3"}
-    rows = [
-        ("ATE — precision", ("ate", "precision")),
-        ("ATE — recall", ("ate", "recall")),
-        ("ATE — span-F1", ("ate", "f1")),
-        ("ACD — micro-F1", ("acd", "micro_f1")),
-        ("ACD — macro-F1", ("acd", "macro_f1")),
-        ("ASC — accuracy", ("asc", "accuracy")),
-        ("ASC — macro-F1", ("asc", "macro_f1")),
+_ROWS = [
+    ("ATE — precision", ("ate", "precision")),
+    ("ATE — recall", ("ate", "recall")),
+    ("ATE — span-F1", ("ate", "f1")),
+    ("ACD — micro-F1", ("acd", "micro_f1")),
+    ("ACD — macro-F1", ("acd", "macro_f1")),
+    ("ASC — accuracy", ("asc", "accuracy")),
+    ("ASC — macro-F1", ("asc", "macro_f1")),
+]
+
+
+def _table(results: dict[str, dict[str, Any]], names: dict[str, str]) -> list[str]:
+    tracks = list(results)
+    lines = [
+        "| Metric | " + " | ".join(names[t] for t in tracks) + " |",
+        "|" + "---|" * (len(tracks) + 1),
     ]
-    header = "| Metric | " + " | ".join(names[t] for t in tracks) + " |"
-    sep = "|" + "---|" * (len(tracks) + 1)
-    lines = ["# Track A vs Track B — SemEval-2014 test", "", header, sep]
-    for label, (task, key) in rows:
+    for label, (task, key) in _ROWS:
         cells = [_fmt(results[t].get(task, {}).get(key)) for t in tracks]
         lines.append(f"| {label} | " + " | ".join(cells) + " |")
+    return lines
+
+
+def _comparison_markdown(results: dict[str, dict[str, Any]], names: dict[str, str]) -> str:
+    lines = ["# Track comparison — SemEval-2014 test", "", *_table(results, names)]
+    domains = sorted({d for r in results.values() for d in r.get("by_domain", {})})
+    for domain in domains:
+        per_domain = {t: r["by_domain"][domain] for t, r in results.items() if "by_domain" in r}
+        lines += ["", f"## {domain.capitalize()}", "", *_table(per_domain, names)]
     lines += [
         "",
         "_ASC and ACD are scored on gold aspects/categories; ATE is "
-        "predicted-vs-gold span exact match. Both tracks use the same "
-        "evaluation code path._",
+        "predicted-vs-gold span exact match. All tracks use the same "
+        "evaluation code path. Aspects labelled `conflict` are dropped from the "
+        "gold data (`drop_conflict: true`), so ATE is not directly comparable to "
+        "papers that keep them. Laptops have no category labels in SemEval-2014._",
     ]
     return "\n".join(lines) + "\n"
 
@@ -285,6 +318,13 @@ def main() -> None:
     parser.add_argument("--use-sample", action="store_true")
     parser.add_argument("--skip-figures", action="store_true")
     parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument(
+        "--model",
+        action="append",
+        metavar="NAME=DIR",
+        help="add/override an artifact to evaluate (default: baseline, transformer, int8)",
+    )
+    parser.add_argument("--only", nargs="+", metavar="NAME", help="evaluate only these tracks")
     args = parser.parse_args()
 
     configure_logging()
@@ -293,23 +333,39 @@ def main() -> None:
     data_dir = Path(args.data_dir) if args.data_dir else PROJECT_ROOT / "data" / "processed"
 
     test = _load_test(data_dir, args.use_sample, seed)
-    models = _load_models()
+    sources = _default_sources()
+    for spec in args.model or []:
+        key, _, directory = spec.partition("=")
+        sources[key] = Path(directory)
+    if args.only:
+        sources = {k: v for k, v in sources.items() if k in args.only}
+    models, names = _load_models(sources)
     if not models:
         raise SystemExit("No trained models found in artifacts/. Run scripts/train.py first.")
 
     results: dict[str, dict[str, Any]] = {}
     for name, model in models.items():
         log.info("evaluating", track=name, n=len(test))
-        results[name] = evaluate_pipeline(model, test)
+        results[name] = {"model": {"dir": str(sources[name]), "name": names[name]}}
+        results[name].update(evaluate_pipeline(model, test))
 
     reports = PROJECT_ROOT / "reports"
     reports.mkdir(parents=True, exist_ok=True)
-    (reports / "comparison.json").write_text(json.dumps(results, indent=2), encoding="utf-8")
-    (reports / "comparison.md").write_text(_comparison_markdown(results), encoding="utf-8")
-    log.info("wrote_reports", json=str(reports / "comparison.json"))
+    if "int8" in results:
+        (reports / "deploy_int8_metrics.json").write_text(
+            json.dumps(results["int8"], indent=2), encoding="utf-8"
+        )
+    if {"baseline", "transformer"} <= set(results):
+        (reports / "comparison.json").write_text(json.dumps(results, indent=2), encoding="utf-8")
+        (reports / "comparison.md").write_text(
+            _comparison_markdown(results, names), encoding="utf-8"
+        )
+        log.info("wrote_reports", json=str(reports / "comparison.json"))
+    else:
+        log.info("skipped_comparison", reason="needs both baseline and transformer")
 
     figures: list[str] = []
-    if not args.skip_figures:
+    if not args.skip_figures and {"baseline", "transformer"} <= set(results):
         figures = _build_figures(results, reports / "figures")
         log.info("wrote_figures", figures=figures)
 

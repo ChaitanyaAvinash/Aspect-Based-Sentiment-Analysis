@@ -18,7 +18,7 @@ function Invoke-Py { param([string[]]$CmdArgs) & $PY @CmdArgs; if ($LASTEXITCODE
 
 switch ($Target) {
     "help" {
-        Write-Host "ABSA targets: setup, setup-gpu, prepare-data, train, evaluate, serve, demo, export, benchmark, test, lint, type, format, check, clean"
+        Write-Host "ABSA targets: setup, setup-gpu, prepare-data, train, train-demo, train-seeds, evaluate, serve, demo, export, benchmark, test, lint, type, format, check, clean"
     }
     "setup" {
         python -m venv .venv
@@ -36,6 +36,12 @@ switch ($Target) {
     "prepare-data" { Invoke-Py @("scripts/prepare_data.py") }
     "train" { Invoke-Py @("scripts/train.py", "--track", "baseline"); Invoke-Py @("scripts/train.py", "--track", "transformer") }
     "train-demo" { Invoke-Py @("scripts/train.py", "--track", "transformer", "--encoder", "bert-base-uncased", "--epochs", "3", "--output-dir", "artifacts/transformer-bert", "--no-mlflow") }
+    "train-seeds" {
+        foreach ($s in 42, 43, 44) {
+            Invoke-Py @("scripts/train.py", "--track", "transformer", "--seed", "$s", "--no-mlflow", "--output-dir", "artifacts/seeds/transformer-seed$s", "--metrics-out", "reports/seeds/transformer_seed$s.json")
+        }
+        Invoke-Py @("scripts/aggregate_seeds.py")
+    }
     "evaluate" { Invoke-Py @("scripts/evaluate.py") }
     "export" { Invoke-Py @("scripts/export_model.py") }
     "benchmark" { Invoke-Py @("scripts/benchmark.py") }

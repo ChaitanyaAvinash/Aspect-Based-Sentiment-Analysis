@@ -26,9 +26,11 @@ class _StubModel:
                 confidence=0.95,
                 start=0,
                 end=5,
-                category="food",
             )
         ]
+
+    def predict_categories(self, text: str) -> list[tuple[str, float]]:
+        return [("food", 0.9)] if text.strip() else []
 
     def predict_batch(self, texts: list[str]) -> list[list[AspectPrediction]]:
         return [self.predict(t) for t in texts]
@@ -59,12 +61,15 @@ def test_predict(client: TestClient) -> None:
     assert aspect["sentiment"] == "positive"
     assert aspect["span"] == [0, 5]
     assert 0.0 <= aspect["confidence"] <= 1.0
+    assert "category" not in aspect
+    assert body["categories"] == [{"category": "food", "confidence": 0.9}]
 
 
 def test_predict_empty_text_is_graceful(client: TestClient) -> None:
     resp = client.post("/predict", json={"text": ""})
     assert resp.status_code == 200
     assert resp.json()["aspects"] == []
+    assert resp.json()["categories"] == []
 
 
 def test_predict_batch(client: TestClient) -> None:
